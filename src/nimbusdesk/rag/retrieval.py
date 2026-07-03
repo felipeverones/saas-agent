@@ -1,24 +1,35 @@
 """Retrieval — answering "which chunks are relevant to this question?".
 
-Phase 1 keeps this deliberately minimal: embed the query, nearest-neighbor
-search, return typed results. It exists as a class (not a bare function)
-because phase 2 grows it into the agentic version — query rewriting, hybrid
-dense+sparse search, reranking, self-check — without changing its callers.
+Phase 2 upgrade: HYBRID search. The query is embedded through two independent
+channels — dense (semantic meaning) and sparse (exact BM25 term weights) — and
+the index fuses both rankings server-side (RRF, see vector_store.py).
+
+WHY BOTH, IN ONE EXAMPLE EACH
+- "customer wants money back"  -> dense wins: no word overlap with "refund
+  policy", but the meanings are neighbors in embedding space.
+- "error ND-WH-TLS"            -> sparse wins: rare identifiers are exactly
+  what embedding models blur, and exactly what BM25 nails.
+Real support traffic is a mix of both phrasings; shipping only one channel
+means silently failing half your users.
 """
 
 from nimbusdesk.domain.knowledge import RetrievedChunk
-from nimbusdesk.rag.ports import Embedder, VectorIndex
+from nimbusdesk.rag.ports import Embedder, SparseEmbedder, VectorIndex
 
 DEFAULT_TOP_K = 5
 
 
 class Retriever:
-    def __init__(self, embedder: Embedder, index: VectorIndex) -> None:
+    def __init__(
+        self, embedder: Embedder, sparse_embedder: SparseEmbedder, index: VectorIndex
+    ) -> None:
         self._embedder = embedder
+        self._sparse_embedder = sparse_embedder
         self._index = index
 
     def search(self, query: str, k: int = DEFAULT_TOP_K) -> list[RetrievedChunk]:
         # embed_query, not embed_passages: retrieval models are asymmetric
         # (see ports.py) — mixing the two silently degrades quality.
-        query_vector = self._embedder.embed_query(query)
-        return self._index.search(query_vector, k)
+        dense = self._embedder.embed_query(query)
+        sparse = self._sparse_embedder.embed_query(query)
+        return self._index.search(dense, sparse, k)

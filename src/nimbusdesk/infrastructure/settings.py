@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     # model is a settings change, not a code change (see ADR-04).
     embedding_model_name: str = "BAAI/bge-small-en-v1.5"
     embedding_dimension: int = 384
+    # BM25 term weights for the sparse channel of hybrid search (ADR-03).
+    sparse_model_name: str = "Qdrant/bm25"
+    # Small cross-encoder (~23 MB) for reranking the candidate funnel (ADR-05).
+    reranker_model_name: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+
+    # Retrieval funnel shape: fetch generously (recall), rerank down (precision).
+    retrieval_candidates: int = 20
+    retrieval_top_k: int = 5
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
 

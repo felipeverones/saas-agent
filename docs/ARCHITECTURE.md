@@ -152,7 +152,7 @@ Format per ADR: **Context → Decision → Rejected alternative → Consequences
 ### ADR-05 — Reranker: local cross-encoder
 - **Context:** top-k from retrieval optimizes recall; we need precision before the
   context window.
-- **Decision:** local cross-encoder reranker (bge-reranker family).
+- **Decision:** local cross-encoder reranker (ms-marco-MiniLM-L-6-v2, ~23 MB).
 - **Rejected:** Cohere Rerank API — top quality, but paid, and it hides the
   bi-encoder (fast, approximate) vs cross-encoder (slow, precise) trade-off worth
   learning.

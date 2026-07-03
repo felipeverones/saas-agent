@@ -63,6 +63,38 @@ the real corpus — still free, because embeddings run locally on CPU.
 **Trade-off.** Local small model ≠ production embedding quality; the golden
 eval set (phase 8) is what catches model-swap regressions.
 
+## Q: "How would you avoid hallucination in a RAG system?"
+
+**A.** Layered, because no single defense is reliable:
+(1) retrieval quality first — hybrid dense+BM25 with reranking, since most
+"hallucinations" are actually the model compensating for bad retrieval;
+(2) grounding contract in the prompt — answer only from provided documents,
+cite [n] per claim, "I don't know" is a valid output;
+(3) independent faithfulness check — a second cheap LLM pass audits the draft
+against sources and lists unsupported claims;
+(4) one bounded corrective round (re-retrieve + regenerate with the failed
+claims), then ship flagged `grounded=False` for human review instead of
+looping.
+**R.** In my project this is `rag/pipeline.py`: the flag reaches the caller,
+so the UI/agent must warn or escalate — the system never silently asserts an
+unverified answer.
+**Trade-off.** The check adds one LLM call (~30% latency); mitigated by using
+the fast model tier. And LLM-as-judge has false negatives — which is why
+phase 8 adds offline eval on a golden dataset instead of trusting the runtime
+check alone.
+
+## Q: "Why hybrid search? Isn't vector search enough?"
+
+**A.** Dense embeddings encode meaning but blur rare exact tokens — error
+codes, SKUs, function names. BM25 nails exact tokens but misses paraphrase
+("money back" vs "refund"). Support traffic is a mix, so I run both channels
+and fuse RANKS with RRF — scores are on incomparable scales, ranks aren't.
+**R.** My integration suite has both query classes; dense-only failed the
+"error ND-WH-TLS" class, hybrid passes all.
+**Trade-off.** Two embeddings per query + a fusion step; Qdrant does fusion
+server-side so latency impact is minimal. BM25 needs no training but is
+vocabulary-exact — typo tolerance would need a third trick (not needed here).
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping

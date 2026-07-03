@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from nimbusdesk.domain.knowledge import DocumentChunk
 from nimbusdesk.rag.chunking import chunk_document
 from nimbusdesk.rag.loading import load_markdown_dir
-from nimbusdesk.rag.ports import Embedder, VectorIndex
+from nimbusdesk.rag.ports import Embedder, SparseEmbedder, VectorIndex
 
 
 class IngestionReport(BaseModel):
@@ -37,18 +37,23 @@ def embedding_input(chunk: DocumentChunk) -> str:
 
 
 class IngestionPipeline:
-    def __init__(self, embedder: Embedder, index: VectorIndex) -> None:
+    def __init__(
+        self, embedder: Embedder, sparse_embedder: SparseEmbedder, index: VectorIndex
+    ) -> None:
         self._embedder = embedder
+        self._sparse_embedder = sparse_embedder
         self._index = index
 
     def run(self, docs_dir: Path) -> IngestionReport:
         documents = load_markdown_dir(docs_dir)
         chunks = [chunk for doc in documents for chunk in chunk_document(doc)]
+        texts = [embedding_input(c) for c in chunks]
 
-        # One batched call: embedding models amortize startup cost over the
-        # batch; embedding chunk-by-chunk is the classic 10x slowdown.
-        vectors = self._embedder.embed_passages([embedding_input(c) for c in chunks])
+        # One batched call per channel: embedding models amortize startup cost
+        # over the batch; embedding chunk-by-chunk is the classic 10x slowdown.
+        dense = self._embedder.embed_passages(texts)
+        sparse = self._sparse_embedder.embed_passages(texts)
 
         self._index.ensure_ready()
-        self._index.upsert(chunks, vectors)
+        self._index.upsert(chunks, dense, sparse)
         return IngestionReport(documents=len(documents), chunks=len(chunks))

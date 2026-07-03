@@ -46,3 +46,39 @@ class RetrievedChunk(BaseModel):
 
     chunk: DocumentChunk
     score: float
+
+
+class Citation(BaseModel):
+    """Provenance for one source used in a generated answer.
+
+    `marker` matches the inline [n] reference in the answer text, so a UI can
+    render clickable footnotes. An answer without citations is, by policy,
+    not trustworthy (see GroundedAnswer.grounded).
+    """
+
+    marker: int = Field(ge=1)
+    doc_id: str
+    title: str
+    section: str
+    snippet: str = Field(description="Verbatim excerpt from the source chunk")
+
+
+class GroundedAnswer(BaseModel):
+    """The final product of the RAG pipeline: an answer with receipts.
+
+    `grounded=False` means the answer failed (or could not complete) the
+    faithfulness self-check — callers must present it with a warning or
+    escalate to a human rather than stating it as fact. Token counts ride
+    along because cost-per-answer is an operational metric, not an
+    afterthought (formalized in phase 8).
+    """
+
+    question: str
+    answer: str
+    citations: list[Citation]
+    grounded: bool
+    notes: str | None = Field(
+        default=None, description="Self-check diagnostics, e.g. unsupported claims"
+    )
+    input_tokens: int = 0
+    output_tokens: int = 0

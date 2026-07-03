@@ -14,7 +14,21 @@ completely decoupled from this module — they don't even import it.
 
 from typing import Protocol, Sequence
 
+from pydantic import BaseModel
+
 from nimbusdesk.domain.knowledge import DocumentChunk, RetrievedChunk
+
+
+class SparseVector(BaseModel):
+    """A mostly-zeros vector stored as (index, value) pairs.
+
+    One dimension per vocabulary term; only terms present in the text get an
+    entry. This is the data shape of lexical (BM25-style) search — exact-token
+    signal, complementary to dense semantic vectors.
+    """
+
+    indices: list[int]
+    values: list[float]
 
 
 class Embedder(Protocol):
@@ -35,16 +49,48 @@ class Embedder(Protocol):
     def embed_query(self, text: str) -> list[float]: ...
 
 
+class SparseEmbedder(Protocol):
+    """Turns text into sparse (lexical/BM25) vectors — the exact-token channel."""
+
+    def embed_passages(self, texts: Sequence[str]) -> list[SparseVector]: ...
+
+    def embed_query(self, text: str) -> SparseVector: ...
+
+
 class VectorIndex(Protocol):
-    """Stores chunk vectors and finds the nearest ones to a query vector."""
+    """Stores chunks under BOTH representations and runs hybrid search.
+
+    Hybrid = dense (meaning) + sparse (exact tokens), fused into one ranking.
+    The fusion strategy (RRF) is the adapter's concern — the pipeline only
+    knows it hands over both query vectors and gets one ranked list back.
+    """
 
     def ensure_ready(self) -> None:
-        """Create the underlying collection/schema if it doesn't exist yet."""
+        """Create (or migrate) the underlying collection/schema."""
         ...
 
-    def upsert(self, chunks: Sequence[DocumentChunk], vectors: Sequence[list[float]]) -> None:
+    def upsert(
+        self,
+        chunks: Sequence[DocumentChunk],
+        dense: Sequence[list[float]],
+        sparse: Sequence[SparseVector],
+    ) -> None:
         """Insert-or-update. Chunks carry deterministic ids, so re-ingesting the
         same documents overwrites instead of duplicating (idempotency)."""
         ...
 
-    def search(self, vector: list[float], k: int) -> list[RetrievedChunk]: ...
+    def search(
+        self, dense: list[float], sparse: SparseVector, k: int
+    ) -> list[RetrievedChunk]: ...
+
+
+class Reranker(Protocol):
+    """Re-scores a candidate set with a more precise (and more expensive) model.
+
+    Sits after retrieval in the funnel: retrieval optimizes RECALL over the
+    whole corpus, the reranker optimizes PRECISION over ~20 candidates.
+    """
+
+    def rerank(
+        self, query: str, results: Sequence[RetrievedChunk], top_n: int
+    ) -> list[RetrievedChunk]: ...

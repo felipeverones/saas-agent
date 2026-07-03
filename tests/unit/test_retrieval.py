@@ -1,7 +1,7 @@
 from nimbusdesk.domain.knowledge import DocumentChunk
 from nimbusdesk.rag.chunking import make_chunk_id
 from nimbusdesk.rag.retrieval import Retriever
-from tests.fakes import FakeEmbedder, InMemoryVectorIndex
+from tests.fakes import FakeEmbedder, FakeSparseEmbedder, InMemoryVectorIndex
 
 
 def _chunk(doc_id: str, position: int, text: str) -> DocumentChunk:
@@ -17,20 +17,25 @@ def _chunk(doc_id: str, position: int, text: str) -> DocumentChunk:
 
 def _make_retriever(texts: list[str]) -> Retriever:
     embedder = FakeEmbedder()
+    sparse_embedder = FakeSparseEmbedder()
     index = InMemoryVectorIndex()
     chunks = [_chunk("doc", i, text) for i, text in enumerate(texts)]
-    index.upsert(chunks, embedder.embed_passages([c.text for c in chunks]))
-    return Retriever(embedder, index)
+    index.upsert(
+        chunks,
+        embedder.embed_passages([c.text for c in chunks]),
+        sparse_embedder.embed_passages([c.text for c in chunks]),
+    )
+    return Retriever(embedder, sparse_embedder, index)
 
 
 def test_exact_text_query_ranks_its_chunk_first():
-    # FakeEmbedder is hash-based: identical text -> identical vector -> score 1.0.
-    # This verifies the query vector actually reaches the index unmangled.
+    # FakeEmbedder is hash-based: identical text -> identical vectors on BOTH
+    # channels -> top rank in both -> top RRF fusion score. This verifies the
+    # query vectors actually reach the index unmangled.
     retriever = _make_retriever(["refund policy", "rate limits", "sso setup"])
     results = retriever.search("rate limits", k=3)
 
     assert results[0].chunk.text == "rate limits"
-    assert results[0].score > 0.999
 
 
 def test_respects_k_and_returns_sorted_scores():

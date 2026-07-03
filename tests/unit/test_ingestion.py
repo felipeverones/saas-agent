@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from nimbusdesk.rag.ingestion import IngestionPipeline
-from tests.fakes import FakeEmbedder, InMemoryVectorIndex
+from tests.fakes import FakeEmbedder, FakeSparseEmbedder, InMemoryVectorIndex
 
 
 def _write_corpus(tmp_path: Path) -> Path:
@@ -16,7 +16,8 @@ def _write_corpus(tmp_path: Path) -> Path:
 
 def test_report_counts_documents_and_chunks(tmp_path: Path):
     index = InMemoryVectorIndex()
-    report = IngestionPipeline(FakeEmbedder(), index).run(_write_corpus(tmp_path))
+    pipeline = IngestionPipeline(FakeEmbedder(), FakeSparseEmbedder(), index)
+    report = pipeline.run(_write_corpus(tmp_path))
 
     assert report.documents == 2
     assert report.chunks == 3
@@ -28,7 +29,7 @@ def test_reingestion_is_idempotent(tmp_path: Path):
     duplicate points. This is what makes `make ingest` safe to re-run."""
     corpus = _write_corpus(tmp_path)
     index = InMemoryVectorIndex()
-    pipeline = IngestionPipeline(FakeEmbedder(), index)
+    pipeline = IngestionPipeline(FakeEmbedder(), FakeSparseEmbedder(), index)
 
     pipeline.run(corpus)
     size_after_first = len(index)

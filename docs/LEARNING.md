@@ -78,7 +78,43 @@ Quality tests: `tests/integration/test_rag_pipeline.py`.
 deterministic for idempotent re-ingestion, and retrieval quality is pinned by
 integration tests that ask questions in user language, not doc language."
 
-## ⏳ Agentic RAG — hybrid search, reranking, query rewriting, self-check (Phase 2)
+## RAG part 2 — agentic RAG: hybrid, rerank, rewrite, self-check (Phase 2)
+
+**What it is.** Naive RAG is a fixed pipe (embed -> top-k -> answer). Agentic
+RAG adds control points where the system inspects and corrects itself:
+
+- *Query rewriting* (`rag/rewrite.py`): a cheap LLM turns "hey can we force
+  everyone onto 2fa?" into search-friendly phrasing. Fails OPEN — on LLM
+  outage the raw question is used; a worse search beats a crashed pipeline.
+- *Hybrid retrieval* (`infrastructure/vector_store.py`): dense vectors match
+  MEANING ("money back" ~ "refund"), sparse BM25 vectors match EXACT TOKENS
+  ("ND-WH-TLS"). Scores live on incomparable scales, so ranks are fused with
+  RRF (Reciprocal Rank Fusion) server-side in Qdrant.
+- *Reranking* (`infrastructure/reranker.py`): the funnel. Bi-encoders embed
+  query and docs separately (fast, precomputable, approximate); a
+  cross-encoder reads query+doc together (precise, expensive). Retrieve 20
+  cheaply, rerank to 5 precisely.
+- *Grounded generation* (`rag/answering.py`): the model may only use provided
+  <document> blocks, must cite [n] inline, must say "I don't know" when the
+  context doesn't answer. Chunks are treated as UNTRUSTED (injection hygiene).
+- *Faithfulness self-check* (`rag/self_check.py` + `rag/pipeline.py`): a
+  second, cheap LLM pass audits the draft against the sources; unsupported
+  claims trigger ONE corrective round (re-retrieve including the claim,
+  regenerate with a revision note), then the answer ships flagged
+  `grounded=False`. Bounded loops — always.
+- *Cost accounting* (`llm/tracking.py`): a decorator wrapping the LLM port
+  accumulates tokens across every call; no component does bookkeeping.
+
+**Why it matters in production.** Hallucination control is layered: grounding
+prompt -> mandatory citations -> independent self-check -> flagged output for
+human review. No single layer is reliable; the stack is. And model-tier
+routing (cheap model for rewrite/check, strong for the answer) is the
+difference between $0.002 and $0.02 per question at scale.
+
+**Talking point.** "My RAG fails open on quality steps and flags-for-human on
+verification failure — and every LLM call in an answer is token-accounted via
+a decorator on the provider port, not bookkeeping scattered through the code."
+
 ## ⏳ The agent loop — reason → act → observe (Phase 3)
 ## ⏳ Multi-agent orchestration — supervisor-worker, handoffs, shared state (Phase 4)
 ## ⏳ MCP — servers, clients, consent model (Phase 5)

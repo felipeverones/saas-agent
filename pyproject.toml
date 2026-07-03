@@ -13,6 +13,7 @@ description = "NimbusDesk — a production-style multi-agent support platform (L
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.116.0",
     "fastembed>=0.8.0",
     # Pydantic v2 is the contract layer of the whole project: every piece of data
     # crossing a boundary (agent state, tool inputs, API payloads) is a validated model.
