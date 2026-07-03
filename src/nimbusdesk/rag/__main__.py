@@ -10,7 +10,13 @@ and injected into the vendor-agnostic pipeline classes.
 """
 
 import argparse
+import sys
 from pathlib import Path
+
+# Windows consoles often default to legacy cp1252, which can't print characters
+# like "≥" that appear in our documents. Force UTF-8 (replacing anything truly
+# unprintable) so a snippet's content never crashes a dev tool.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
 from qdrant_client import QdrantClient
 
