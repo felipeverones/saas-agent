@@ -1,0 +1,26 @@
+# Local infrastructure. The app itself joins this file in phase 9;
+# until then we run the app from the venv and only infra lives in containers —
+# faster feedback loop while developing (no image rebuild per code change).
+
+services:
+  # Qdrant: our vector store. Chosen over Chroma because it has native hybrid
+  # search (dense + sparse vectors fused server-side), which phase 2 depends on.
+  qdrant:
+    image: qdrant/qdrant:v1.15.4
+    ports:
+      - "6333:6333"   # REST API + web dashboard (http://localhost:6333/dashboard)
+      - "6334:6334"   # gRPC (faster; the Python client uses it when available)
+    volumes:
+      # Named volume so ingested vectors survive `docker compose down`
+      - qdrant_data:/qdrant/storage
+
+  # Arize Phoenix: open-source trace viewer. Speaks standard OTLP, so our
+  # OpenTelemetry spans (phase 8) show up here with zero vendor lock-in.
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"   # Web UI (http://localhost:6006)
+      - "4317:4317"   # OTLP gRPC ingest — where the app exports spans
+
+volumes:
+  qdrant_data:

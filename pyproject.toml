@@ -1,0 +1,49 @@
+# pyproject.toml is the single source of truth for Python project metadata (PEP 621).
+# We use `uv` to manage it: `uv sync` creates the venv + installs everything, `uv add X` adds deps.
+#
+# WHY the dependency list is short right now: we add dependencies phase by phase
+# (LangGraph in phase 4, mcp in phase 5, etc.). Starting with everything installed
+# hides *why* each dependency exists — and "why is this dep here?" is a fair
+# interview question about any project.
+
+[project]
+name = "nimbusdesk"
+version = "0.1.0"
+description = "NimbusDesk — a production-style multi-agent support platform (LangGraph + agentic RAG + MCP) built as a learning/portfolio project"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Pydantic v2 is the contract layer of the whole project: every piece of data
+    # crossing a boundary (agent state, tool inputs, API payloads) is a validated model.
+    "pydantic>=2.9",
+    # pydantic-settings loads config from env vars / .env with the same validation.
+    # WHY: config errors should explode at startup, not mid-conversation with a customer.
+    "pydantic-settings>=2.5",
+]
+
+[dependency-groups]
+# Dev-only deps (never shipped in the Docker image).
+dev = [
+    "pytest>=8.3",
+    "pytest-mock>=3.14",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nimbusdesk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/F = pycodestyle/pyflakes basics, I = import sorting, B = common bug patterns (bugbear)
+select = ["E", "F", "I", "B"]

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets — .env holds real API keys and must NEVER be committed.
+# .env.example (committed) documents which vars exist, with fake values.
+.env
+
+# Local data / runtime artifacts
+*.db
+*.sqlite*
+qdrant_storage/
+.coverage
+htmlcov/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
