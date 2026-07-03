@@ -39,7 +39,45 @@ a written artifact you can walk through.
 
 ---
 
-## ⏳ RAG — ingestion, chunking, embeddings, retrieval (Phase 1)
+## RAG part 1 — ingestion, chunking, embeddings, retrieval (Phase 1)
+
+**What it is.** RAG = answer from retrieved evidence instead of model memory.
+The ingestion pipeline (`load -> chunk -> embed -> index`) converts documents
+into searchable vectors once; at question time, the query is embedded and the
+nearest chunks are returned.
+
+**The vocabulary, quickly.**
+- *Embedding*: a model maps text to a vector (here: 384 numbers) where similar
+  meanings land close together. "money back" and "refund" end up neighbors
+  even with zero shared words — that's why this beats keyword search alone.
+- *Chunk*: the retrieval unit. We split on markdown headings first (authors
+  already segmented by topic), size-split only oversized sections, and keep a
+  paragraph of overlap so no sentence loses its context at a cut point.
+- *Asymmetric retrieval*: queries and passages are embedded through different
+  methods (`embed_query` vs `embed_passages`) because the model was trained to
+  place short questions near the long passages that answer them. Using one
+  `embed()` for both is a classic silent-quality bug.
+- *Contextual enrichment (lite)*: we embed "title — section \n text" but store
+  raw text — a cut chunk regains its topic signal, citations stay verbatim.
+
+**Where.** Domain contracts: `src/nimbusdesk/domain/knowledge.py`. Pipeline:
+`src/nimbusdesk/rag/` (loading, chunking, ingestion, retrieval, ports).
+Adapters: `src/nimbusdesk/infrastructure/{embeddings,vector_store}.py`.
+Quality tests: `tests/integration/test_rag_pipeline.py`.
+
+**Why it matters in production.**
+- Deterministic chunk ids (UUID5) + upsert make re-ingestion idempotent — you
+  can re-run the indexer on every deploy without duplicating the corpus.
+- The two-tier test strategy mirrors production reality: fakes prove the
+  MECHANICS in milliseconds; a small integration suite with the real model
+  proves retrieval QUALITY ("does the user's phrasing find the right doc?").
+- Vector params (cosine, named vectors) live in ONE adapter; phase 2 adds
+  sparse vectors to the same collection with zero migration.
+
+**Talking point.** "My chunker is structure-aware, my chunk ids are
+deterministic for idempotent re-ingestion, and retrieval quality is pinned by
+integration tests that ask questions in user language, not doc language."
+
 ## ⏳ Agentic RAG — hybrid search, reranking, query rewriting, self-check (Phase 2)
 ## ⏳ The agent loop — reason → act → observe (Phase 3)
 ## ⏳ Multi-agent orchestration — supervisor-worker, handoffs, shared state (Phase 4)

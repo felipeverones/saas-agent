@@ -13,12 +13,14 @@ description = "NimbusDesk — a production-style multi-agent support platform (L
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastembed>=0.8.0",
     # Pydantic v2 is the contract layer of the whole project: every piece of data
     # crossing a boundary (agent state, tool inputs, API payloads) is a validated model.
     "pydantic>=2.9",
     # pydantic-settings loads config from env vars / .env with the same validation.
     # WHY: config errors should explode at startup, not mid-conversation with a customer.
     "pydantic-settings>=2.5",
+    "qdrant-client>=1.18.0",
 ]
 
 [dependency-groups]
@@ -39,6 +41,9 @@ packages = ["src/nimbusdesk"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "integration: uses real embeddings + in-process Qdrant (first run downloads ~65MB model); deselect with -m 'not integration'",
+]
 
 [tool.ruff]
 line-length = 100

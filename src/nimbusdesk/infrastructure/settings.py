@@ -1,0 +1,46 @@
+"""Application settings — all environment config, validated at startup.
+
+WHY pydantic-settings: configuration errors should kill the process at boot
+with a readable message, not surface as a cryptic failure mid-conversation.
+Every field maps to an env var of the same name in UPPERCASE (loaded from the
+environment or a local `.env` file — see `.env.example` for documentation).
+"""
+
+from functools import lru_cache
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    # Optional here because phases 1-2 run without an LLM. The Anthropic
+    # adapter (phase 3) raises at construction time if it's missing — the
+    # "fail at startup" rule enforced at the point where the key is needed.
+    anthropic_api_key: SecretStr | None = None
+    nimbus_model_strong: str = "claude-sonnet-5"
+    nimbus_model_fast: str = "claude-haiku-4-5-20251001"
+
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "nimbus_kb"
+
+    # bge-small-en-v1.5: 384-dim English model, ~65 MB, runs on CPU via ONNX.
+    # Small on purpose — free ingestion and fast tests; swapping for a larger
+    # model is a settings change, not a code change (see ADR-04).
+    embedding_model_name: str = "BAAI/bge-small-en-v1.5"
+    embedding_dimension: int = 384
+
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Cached accessor so every module shares one validated instance.
+
+    Import-time singletons (`settings = Settings()` at module level) make
+    testing painful — a function behind lru_cache is trivially overridable.
+    """
+    return Settings()

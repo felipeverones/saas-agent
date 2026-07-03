@@ -2,7 +2,7 @@
 # WHY a Makefile in 2026: it's still the lingua franca for "how do I run this repo" —
 # CI, Docker builds and new contributors all read the same entry points.
 
-.PHONY: setup test lint run eval ingest up down
+.PHONY: setup test lint run eval ingest search up down
 
 setup:            ## Create venv + install all deps (uv provisions Python 3.12 itself)
 	uv sync
@@ -19,8 +19,11 @@ up:               ## Start local infra (Qdrant vector store + Phoenix trace view
 down:             ## Stop local infra
 	docker compose down
 
-ingest:           ## Load seed documents into the vector store (available in phase 1)
-	@echo "Available in phase 1 (RAG ingestion)"
+ingest:           ## Index data/seed into Qdrant (idempotent — safe to re-run)
+	uv run python -m nimbusdesk.rag ingest
+
+search:           ## Query the index, e.g.: make search Q="refund policy"
+	uv run python -m nimbusdesk.rag search "$(Q)"
 
 run:              ## Start the API + interactive CLI (available in phase 9)
 	@echo "Available in phase 9 (packaging & interface)"

@@ -6,7 +6,9 @@ services:
   # Qdrant: our vector store. Chosen over Chroma because it has native hybrid
   # search (dense + sparse vectors fused server-side), which phase 2 depends on.
   qdrant:
-    image: qdrant/qdrant:v1.15.4
+    # Keep the server's minor version aligned with qdrant-client in
+    # pyproject.toml — the client warns (and may misbehave) when they drift.
+    image: qdrant/qdrant:v1.18.0
     ports:
       - "6333:6333"   # REST API + web dashboard (http://localhost:6333/dashboard)
       - "6334:6334"   # gRPC (faster; the Python client uses it when available)

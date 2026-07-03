@@ -37,6 +37,32 @@ retrieve pipeline. Structured facts go to SQLite (exact lookup), episodic
 summaries to Qdrant (semantic lookup). In a product company I'd evaluate Mem0/Zep
 first — buying is usually right when memory isn't your differentiator.
 
+## Q: "How did you decide your chunking strategy and chunk size?"
+
+**S/T.** Markdown knowledge base; retrieval quality depends on chunks that are
+topically coherent and self-explanatory.
+**A.** Structure-aware chunking: split on headings first (the author's own
+topic segmentation), size-split only oversized sections on paragraph
+boundaries with overlap, and carry the heading trail into each chunk. I embed
+the chunk WITH its title/section prefix but store the raw text, so embeddings
+get context and citations stay verbatim.
+**R.** Integration tests asking questions in user language ("customer wants
+money back after 3 weeks") hit the right article top-1 with no keyword overlap.
+**Trade-off.** Fixed-size chunking is simpler and works on unstructured text;
+I'd fall back to it (or sentence-window chunking) for OCR dumps and chat logs
+where headings don't exist. Chunk size (~1200 chars) is a recall/precision
+dial — the honest answer is you tune it against an eval set, which is phase 8.
+
+## Q: "How do you test a RAG system without burning API calls?"
+
+**A.** Two tiers. Unit: everything behind ports — a hash-based FakeEmbedder
+and an in-memory index prove mechanics (idempotent upserts, ranking, k) in
+milliseconds, offline. Integration: real local embedding model + Qdrant's
+in-process mode (`QdrantClient(":memory:")`) prove semantic quality against
+the real corpus — still free, because embeddings run locally on CPU.
+**Trade-off.** Local small model ≠ production embedding quality; the golden
+eval set (phase 8) is what catches model-swap regressions.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping

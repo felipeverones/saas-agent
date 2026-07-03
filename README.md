@@ -11,7 +11,7 @@ observability.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Architecture, ADRs, scaffold | ✅ |
-| 1 | RAG: ingestion + vector retrieval | ⏳ |
+| 1 | RAG: ingestion + vector retrieval | ✅ |
 | 2 | Agentic RAG: hybrid search, rerank, self-check, citations | ⏳ |
 | 3 | Single agent with tools (ReAct loop) | ⏳ |
 | 4 | Multi-agent: supervisor + specialists | ⏳ |
@@ -29,7 +29,12 @@ observability.
 make setup   # venv + deps (uv provisions Python 3.12)
 make up      # Qdrant (localhost:6333) + Phoenix traces (localhost:6006)
 make test    # test suite — no API keys needed, LLM is always mocked
+make ingest  # index the fake NimbusDesk knowledge base into Qdrant
+make search Q="customer wants money back after 3 weeks"
 ```
+
+Unit tests use fakes (instant, offline); integration tests use real embeddings
+plus an in-process Qdrant — run only those with `pytest -m integration`.
 
 ## Documentation
 
