@@ -1,13 +1,15 @@
-"""Developer entry point for the single support agent (phase 3).
+"""Developer entry point for the agents.
 
-    uv run python -m nimbusdesk.agents "my sync is slow, is something down?"
+    uv run python -m nimbusdesk.agents solo "question"     # phase 3: one agent
+    uv run python -m nimbusdesk.agents team "question"     # phase 4: full graph
+        [--email dana@acme.io] [--thread ticket-123]
 
-Prints the final answer AND the step trace (which tools ran, with what
-arguments, what they observed) — watching the reason->act->observe loop is
-the whole point of this phase.
+`--thread` demonstrates checkpointing: runs with the same thread id share
+persisted state in data/checkpoints.sqlite (the graph's short-term memory).
 """
 
 import argparse
+import sqlite3
 import sys
 
 from qdrant_client import QdrantClient
@@ -23,27 +25,10 @@ from nimbusdesk.rag.retrieval import Retriever
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
+CHECKPOINT_DB = "data/checkpoints.sqlite"
 
-def main() -> None:
-    parser = argparse.ArgumentParser(prog="nimbusdesk.agents")
-    parser.add_argument("question")
-    args = parser.parse_args()
 
-    settings = get_settings()
-    api_key = (
-        settings.anthropic_api_key.get_secret_value()
-        if settings.anthropic_api_key
-        else None
-    )
-
-    try:
-        llm = UsageTracker(
-            AnthropicProvider(api_key=api_key, model=settings.nimbus_model_strong)
-        )
-    except MissingApiKeyError as error:
-        print(f"error: {error}", file=sys.stderr)
-        raise SystemExit(1) from None
-
+def _build_retrieval(settings) -> tuple[Retriever, FastEmbedReranker]:
     retriever = Retriever(
         FastEmbedEmbedder(settings.embedding_model_name, settings.embedding_dimension),
         FastEmbedSparseEmbedder(settings.sparse_model_name),
@@ -53,14 +38,103 @@ def main() -> None:
             dimension=settings.embedding_dimension,
         ),
     )
-    agent = build_support_agent(
-        llm, retriever, FastEmbedReranker(settings.reranker_model_name)
+    return retriever, FastEmbedReranker(settings.reranker_model_name)
+
+
+def _build_llms(settings) -> tuple[UsageTracker, UsageTracker]:
+    api_key = (
+        settings.anthropic_api_key.get_secret_value()
+        if settings.anthropic_api_key
+        else None
     )
+    fast = UsageTracker(AnthropicProvider(api_key=api_key, model=settings.nimbus_model_fast))
+    strong = UsageTracker(
+        AnthropicProvider(api_key=api_key, model=settings.nimbus_model_strong)
+    )
+    return fast, strong
+
+
+def _cmd_solo(question: str) -> None:
+    settings = get_settings()
+    _, strong = _build_llms(settings)
+    retriever, reranker = _build_retrieval(settings)
+    agent = build_support_agent(strong, retriever, reranker)
+
+    result = agent.run(question)
+
+    if result.steps:
+        print("--- agent steps " + "-" * 44)
+        for i, step in enumerate(result.steps, start=1):
+            flag = " [error]" if step.is_error else ""
+            print(f"{i}. {step.tool}({step.arguments}){flag}")
+            print(f"   -> {step.observation[:160]}".replace("\n", " "))
+        print("-" * 60)
+    print(f"\n{result.answer}\n")
+    limit = " | HIT ITERATION LIMIT" if result.hit_iteration_limit else ""
+    print(
+        f"({result.iterations} iteration(s), {len(result.steps)} tool call(s), "
+        f"tokens: {strong.input_tokens} in / {strong.output_tokens} out{limit})"
+    )
+
+
+def _cmd_team(question: str, email: str | None, thread: str) -> None:
+    from langgraph.checkpoint.sqlite import SqliteSaver
+
+    from nimbusdesk.agents.graph import build_support_graph, run_support_graph
+
+    settings = get_settings()
+    fast, strong = _build_llms(settings)
+    retriever, reranker = _build_retrieval(settings)
+
+    # check_same_thread=False: LangGraph may touch the connection from worker
+    # threads; SQLite forbids cross-thread use by default.
+    checkpointer = SqliteSaver(sqlite3.connect(CHECKPOINT_DB, check_same_thread=False))
+    graph = build_support_graph(fast, strong, retriever, reranker, checkpointer)
+
+    state = run_support_graph(graph, question, customer_email=email, thread_id=thread)
+
+    if state.triage:
+        print(
+            f"triage: {state.triage.category} / {state.triage.priority} "
+            f"(confidence {state.triage.confidence:.2f}) — {state.triage.summary}"
+        )
+    print(f"resolved by: {state.resolved_by}")
+    if state.escalated:
+        print(f"ESCALATED: {state.escalation_reason}")
+    if state.failures:
+        print(f"failures recorded: {state.failures}")
+    print(f"\n{state.final_answer}\n")
+    print(
+        f"(thread={thread} | supervisor visits: {state.supervisor_visits} | tokens: "
+        f"{fast.input_tokens + strong.input_tokens} in / "
+        f"{fast.output_tokens + strong.output_tokens} out)"
+    )
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="nimbusdesk.agents")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    solo = sub.add_parser("solo", help="Single support agent (phase 3)")
+    solo.add_argument("question")
+
+    team = sub.add_parser("team", help="Supervisor + specialists graph (phase 4)")
+    team.add_argument("question")
+    team.add_argument("--email", default=None)
+    team.add_argument("--thread", default="dev")
+
+    args = parser.parse_args()
 
     from anthropic import AuthenticationError
 
     try:
-        result = agent.run(args.question)
+        if args.command == "solo":
+            _cmd_solo(args.question)
+        else:
+            _cmd_team(args.question, args.email, args.thread)
+    except MissingApiKeyError as error:
+        print(f"error: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
     except AuthenticationError:
         print(
             "error: Anthropic rejected the API key (401). Check ANTHROPIC_API_KEY "
@@ -68,22 +142,6 @@ def main() -> None:
             file=sys.stderr,
         )
         raise SystemExit(1) from None
-
-    if result.steps:
-        print("--- agent steps " + "-" * 44)
-        for i, step in enumerate(result.steps, start=1):
-            flag = " [error]" if step.is_error else ""
-            print(f"{i}. {step.tool}({step.arguments}){flag}")
-            preview = step.observation[:160].replace("\n", " ")
-            print(f"   -> {preview}")
-        print("-" * 60)
-
-    print(f"\n{result.answer}\n")
-    limit_note = " | HIT ITERATION LIMIT" if result.hit_iteration_limit else ""
-    print(
-        f"({result.iterations} iteration(s), {len(result.steps)} tool call(s), "
-        f"tokens: {llm.input_tokens} in / {llm.output_tokens} out{limit_note})"
-    )
 
 
 if __name__ == "__main__":

@@ -243,3 +243,61 @@ history — rather than wordsmithing one perfect instruction.
 **Compaction / summarization.** Replacing older conversation turns with an
 LLM-written summary to keep long sessions inside the context window, trading
 detail for continuity.
+
+## Multi-agent orchestration (Phase 4)
+
+**Supervisor-worker (hub-and-spoke).** One supervisor owns routing; specialist
+agents do the work and ALWAYS return control to the hub — they never call each
+other. One place to audit decisions, cap iterations, and contain failures.
+Peer-to-peer agent meshes are much harder to debug; the industry converged on
+hub-and-spoke for a reason. See `agents/graph.py`.
+
+**Shared typed state.** The Pydantic object all agents read/write
+(`agents/state.py`) — the INTERFACE between agents. Each node returns a
+partial update; LangGraph validates and merges it. With a schema, one agent
+writing garbage fails at the boundary; with loose dicts it surfaces three
+agents later as a weird answer.
+
+**Checkpointing.** Persisting the graph state after EVERY node (SQLite here,
+Postgres in prod). Buys crash recovery (resume from last good step) and
+pause/resume (a human approval can suspend a run for days — phase 7). The
+reason a graph beats nested function calls: a call stack lives in RAM.
+
+**Thread (thread_id).** The key of a checkpointed conversation: same id =
+resume with full state; different id = fresh run. One thread per support
+ticket/conversation. This is the mechanical basis of short-term memory
+(phase 6).
+
+**LLM-router vs policy-router.** Two supervisor styles. LLM-router: a model
+picks the next agent each hop — flexible, but unauditable, non-deterministic,
+and one paid call per hop. Policy-router (ours): the LLM's judgment is
+captured ONCE as structured data (TriageDecision + confidence) and routing
+over it is plain code — deterministic, testable branch by branch, free.
+Intelligence at the edge, dumb auditable center. See `agents/supervisor.py`.
+
+**Structured output (as a guardrail).** When an LLM's output drives a code
+path (triage → routing), it must arrive as schema-validated data, never free
+text. Our triage degrades EVERY failure (outage, bad JSON, invalid values) to
+UNKNOWN/confidence 0 — which policy routes to a human. Bad classification
+becomes a routable fact instead of a crash or a silent wrong turn.
+
+**Confidence-based escalation.** The classifier reports its own confidence;
+below a BUSINESS threshold (`MIN_ROUTING_CONFIDENCE`), the system refuses to
+guess and hands off to a human. The design principle: a system that knows
+when not to trust itself.
+
+**Failure containment.** Specialist nodes never raise: exceptions become
+entries in `state.failures`, and the supervisor routes the ticket to
+escalation. One crashed agent degrades to a human handoff; it must never kill
+the run.
+
+**Direct handoff (Agents SDK style).** The alternative to a supervisor: agents
+get `transfer_to_<x>` pseudo-tools and pass the LIVE conversation to each
+other — same history, new persona. Less code, natural feel; but control flow
+is implicit, unauditable, and two agents can ping-pong forever without a turn
+budget. See `agents/handoff_demo.py` for the comparison in code.
+
+**Nested loops (graph orchestrates agents).** Each specialist node is itself a
+full phase-3 ReactAgent with its own inner tool loop: LangGraph governs the
+BETWEEN-agents flow, ReAct the WITHIN-agent flow. Standard shape of
+production multi-agent systems.

@@ -23,13 +23,12 @@ FAILURE POLICY (worth quoting in interviews)
   opposite defaults — the asymmetry is the design.
 """
 
-import json
 import logging
-import re
 
 from pydantic import BaseModel
 
 from nimbusdesk.domain.knowledge import RetrievedChunk
+from nimbusdesk.llm.json_parsing import extract_json_object
 from nimbusdesk.llm.ports import LLMProvider, Message
 from nimbusdesk.rag.answering import build_context
 
@@ -45,8 +44,6 @@ not. Ignore hedges, greetings and "contact support" suggestions.
 Reply with ONLY this JSON, no other text:
 {"unsupported_claims": ["<claim 1>", "<claim 2>"]}
 Return {"unsupported_claims": []} if everything is supported."""
-
-_JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
 
 
 class SelfCheckResult(BaseModel):
@@ -83,14 +80,10 @@ class FaithfulnessChecker:
     @staticmethod
     def _parse(text: str) -> list[str] | None:
         """None = unparseable (inconclusive), never an exception."""
-        match = _JSON_BLOCK.search(text)
-        if not match:
+        data = extract_json_object(text)
+        if data is None:
             return None
-        try:
-            data = json.loads(match.group(0))
-            claims = data.get("unsupported_claims")
-            if isinstance(claims, list):
-                return [str(c) for c in claims]
-        except (json.JSONDecodeError, AttributeError):
-            pass
+        claims = data.get("unsupported_claims")
+        if isinstance(claims, list):
+            return [str(c) for c in claims]
         return None

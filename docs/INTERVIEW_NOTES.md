@@ -122,6 +122,43 @@ validation can't drift; (3) failures return as error observations the model
 can read, while internal stack traces stay in MY logs — models don't need
 implementation details, and leaking them helps injection attacks.
 
+## Q: "Supervisor pattern vs direct handoffs — when would you use each?"
+
+**S/T.** I implemented BOTH in the same project to compare honestly.
+**A.** Supervisor graph (LangGraph): hub-and-spoke, every specialist returns
+to the hub, routing is explicit and checkpointed. Direct handoff (Agents SDK
+style): agents carry `transfer_to_<x>` tools and pass the live conversation
+to each other — same history, new persona.
+**R.** Handoffs took ~120 lines and read naturally, but control flow is
+implicit (who reaches whom is buried in tool lists) and two agents can
+ping-pong forever without a turn budget — I have a test demonstrating exactly
+that failure. The graph costs more ceremony and buys auditability,
+per-step checkpointing, and one place to enforce budgets.
+**Rule of thumb.** Handoffs for small conversational systems (2-3 personas);
+state graph when you need audit trails, crash recovery, or human-in-the-loop.
+
+## Q: "Why is your supervisor plain code instead of an LLM?"
+
+**A.** I separate judgment from routing. The LLM judges ONCE — triage returns
+structured data (category, priority, confidence) validated against a schema.
+Routing over that data is a pure function: deterministic, free, and
+unit-tested branch by branch (low confidence → human, urgent → human,
+billing → billing agent...). An LLM-router re-judges at every hop: a paid
+call each time, and "why did it route there?" has no answer you can test.
+**Trade-off.** A policy router only handles anticipated lanes. For an
+open-ended assistant with dozens of dynamic skills, I'd flip to an LLM router
+— and accept the auditability cost consciously.
+
+## Q: "What happens when one of your agents fails mid-ticket?"
+
+**A.** Failures are state, not exceptions. Specialist nodes catch everything
+and append to `state.failures`; the supervisor's policy routes the ticket to
+escalation, which produces a customer-facing handoff message
+deterministically (no LLM in the escalation path on purpose — when the system
+is already broken, the last thing you want is another call that can fail).
+The invariant my flow tests pin: every run ends with an answer, even when a
+specialist crashed — a crashed agent degrades the ticket, never kills it.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping

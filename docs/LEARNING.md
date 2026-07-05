@@ -150,7 +150,41 @@ can debug any of them — and answer "what does your framework actually do?"
 explicit iteration budget — the two properties that separate a demo agent
 from one you can put in front of customers."
 
-## ⏳ Multi-agent orchestration — supervisor-worker, handoffs, shared state (Phase 4)
+## Multi-agent orchestration — supervisor-worker, handoffs, shared state (Phase 4)
+
+**What it is.** A LangGraph state graph: supervisor at the hub, specialists
+(triage, technical, billing, escalation) as spokes, one shared Pydantic state
+as the interface between them, checkpointed to SQLite after every node.
+
+**The flow.** START → supervisor → triage (fast model, structured
+TriageDecision with confidence) → supervisor routes by POLICY (code, not an
+LLM): billing→billing agent, technical/account→technical agent, low
+confidence or urgent or crashed specialist→escalation. Specialists are the
+phase-3 ReactAgents nested as nodes. Every spoke returns to the hub; a
+supervisor-visit budget bounds the whole graph.
+
+**Design decisions to remember.**
+- *Policy-router over LLM-router*: the LLM's judgment is captured once as
+  structured data; routing over it is deterministic, testable code.
+  Intelligence at the edge, dumb auditable center (`agents/supervisor.py`).
+- *Every failure becomes a routable fact*: triage degrades to
+  UNKNOWN/confidence 0; specialist crashes become `state.failures` entries;
+  both route to escalation. The customer ALWAYS gets an answer, even if the
+  answer is "a human will follow up".
+- *Checkpointing* (`thread_id` → persisted state per conversation) is what
+  separates a graph from nested function calls: crash recovery + pause/resume.
+- *Direct handoff demo* (`agents/handoff_demo.py`): the Agents-SDK-style
+  alternative where agents transfer the live conversation to each other.
+  Less code, implicit control flow, ping-pong risk. We built both to compare.
+
+**Where.** State: `agents/state.py`. Policy: `agents/supervisor.py`. Nodes:
+`agents/triage.py`, `agents/specialists.py`. Wiring: `agents/graph.py`.
+Flows tested end-to-end: `tests/integration/test_support_flows.py`.
+
+**Talking point.** "My supervisor is code, not an LLM — triage confidence is
+structured output, and routing over it is unit-tested branch by branch. The
+LLMs decide WHAT things are; the system decides WHERE they go."
+
 ## ⏳ MCP — servers, clients, consent model (Phase 5)
 ## ⏳ Memory — short-term vs long-term (Phase 6)
 ## ⏳ Guardrails — I/O validation, HITL, prompt-injection defense (Phase 7)

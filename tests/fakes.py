@@ -128,6 +128,9 @@ class ExplodingLLMProvider:
     def complete(self, **kwargs) -> Completion:
         raise ConnectionError("simulated LLM outage")
 
+    def complete_with_tools(self, **kwargs) -> ToolUseCompletion:
+        raise ConnectionError("simulated LLM outage")
+
 
 class FakeToolLLM:
     """Scripted ToolCallingLLM: yields pre-written assistant turns in order and

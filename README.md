@@ -14,7 +14,7 @@ observability.
 | 1 | RAG: ingestion + vector retrieval | ✅ |
 | 2 | Agentic RAG: hybrid search, rerank, self-check, citations | ✅ |
 | 3 | Single agent with tools (ReAct loop) | ✅ |
-| 4 | Multi-agent: supervisor + specialists | ⏳ |
+| 4 | Multi-agent: supervisor + specialists | ✅ |
 | 5 | MCP servers + client | ⏳ |
 | 6 | Memory: short & long term | ⏳ |
 | 7 | Guardrails + human-in-the-loop | ⏳ |
@@ -37,6 +37,9 @@ make ask Q="can we force two factor authentication for the whole workspace?"
 
 # single support agent: watches service status, looks up customers, searches the KB
 make agent Q="dana@acme.io says sync is very slow today, what's going on?"
+
+# full multi-agent team: triage -> supervisor routing -> specialist (or human escalation)
+make team Q="I was double charged this month, can I get a refund?"
 ```
 
 Unit tests use fakes (instant, offline); integration tests use real embeddings
