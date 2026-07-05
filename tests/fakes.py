@@ -17,7 +17,7 @@ import re
 from typing import Sequence
 
 from nimbusdesk.domain.knowledge import DocumentChunk, RetrievedChunk
-from nimbusdesk.llm.ports import Completion, Message
+from nimbusdesk.llm.ports import AssistantTurn, Completion, Message, ToolUseCompletion
 from nimbusdesk.rag.ports import SparseVector
 
 
@@ -127,6 +127,36 @@ class ExplodingLLMProvider:
 
     def complete(self, **kwargs) -> Completion:
         raise ConnectionError("simulated LLM outage")
+
+
+class FakeToolLLM:
+    """Scripted ToolCallingLLM: yields pre-written assistant turns in order and
+    records every request, so tests drive the agent loop deterministically."""
+
+    def __init__(self, turns: Sequence[AssistantTurn]) -> None:
+        self._turns = list(turns)
+        self.calls: list[dict] = []
+
+    def complete_with_tools(
+        self,
+        *,
+        turns: Sequence,
+        tools: Sequence,
+        system: str | None = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> ToolUseCompletion:
+        self.calls.append({"turns": list(turns), "tools": list(tools), "system": system})
+        if not self._turns:
+            raise AssertionError("FakeToolLLM ran out of scripted turns")
+        turn = self._turns.pop(0)
+        return ToolUseCompletion(
+            turn=turn,
+            stop_reason="tool_use" if turn.tool_calls else "end_turn",
+            model="fake",
+            input_tokens=10,
+            output_tokens=5,
+        )
 
 
 def _ranks(scores: list[float]) -> list[int]:

@@ -11,13 +11,21 @@ instead of bookkeeping in N classes — this is also exactly where phase 8
 attaches tracing spans and per-model cost tables.
 """
 
-from typing import Sequence
+from typing import Any, Sequence
 
-from nimbusdesk.llm.ports import Completion, LLMProvider, Message
+from nimbusdesk.llm.ports import (
+    Completion,
+    Message,
+    ToolSpec,
+    ToolUseCompletion,
+    Turn,
+)
 
 
 class UsageTracker:
-    def __init__(self, inner: LLMProvider) -> None:
+    def __init__(self, inner: Any) -> None:
+        # `inner` may implement LLMProvider, ToolCallingLLM, or both — the
+        # tracker forwards whichever methods are actually called (duck typing).
         self._inner = inner
         self.input_tokens = 0
         self.output_tokens = 0
@@ -37,7 +45,29 @@ class UsageTracker:
             max_tokens=max_tokens,
             temperature=temperature,
         )
-        self.input_tokens += completion.input_tokens
-        self.output_tokens += completion.output_tokens
-        self.calls += 1
+        self._record(completion.input_tokens, completion.output_tokens)
         return completion
+
+    def complete_with_tools(
+        self,
+        *,
+        turns: Sequence[Turn],
+        tools: Sequence[ToolSpec],
+        system: str | None = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> ToolUseCompletion:
+        completion = self._inner.complete_with_tools(
+            turns=turns,
+            tools=tools,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        self._record(completion.input_tokens, completion.output_tokens)
+        return completion
+
+    def _record(self, input_tokens: int, output_tokens: int) -> None:
+        self.input_tokens += input_tokens
+        self.output_tokens += output_tokens
+        self.calls += 1

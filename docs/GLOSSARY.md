@@ -173,3 +173,51 @@ component. Same hook where tracing attaches in phase 8.
 **Token / cost accounting.** Every answer reports total input/output tokens
 across ALL its LLM calls. Cost-per-resolved-ticket is a product metric: a $3
 answer to a $0.50 question is a bug even when correct.
+
+## Agents (Phase 3)
+
+**Agent.** An LLM running in a loop with tools: it decides, per iteration,
+whether to answer or to act. The model itself chooses when it's done — that
+autonomy is what separates an agent from a fixed pipeline.
+
+**ReAct (Reason + Act).** The canonical agent loop: reason about the goal →
+act (call a tool) → observe the result → repeat. See `agents/react.py`.
+
+**Tool.** A capability the agent can request: (name, when-to-use description,
+JSON Schema of arguments). The model only EMITS a structured request; our
+code validates and executes it. That split is the security boundary of every
+agent system. See `agents/tools.py`.
+
+**Tool calling / function calling.** The provider-level feature where models
+return structured tool-call blocks (id, name, typed arguments) instead of
+prose like "Action: search[query]". The 2023 regex-parsing approach was
+brittle and injectable; structured calls are data, not text to parse.
+
+**Observation.** Whatever comes back from a tool, fed into the next loop
+iteration — including ERRORS. "Errors are observations, not exceptions": a
+failed call goes back to the model (is_error=true) so it can retry with fixed
+arguments, pick another tool, or tell the user. One flaky tool must not kill
+the conversation.
+
+**Iteration budget (max_iterations).** The hard cap on loop cycles. An agent
+that can loop WILL eventually loop; the budget turns an infinite incident into
+a bounded, observable failure with a graceful fallback message. Same principle
+as the RAG correction-round cap.
+
+**Schema-validated tool inputs.** Every tool's arguments pass through its
+Pydantic model before execution — malformed or hostile arguments bounce back
+as model-readable error observations. First line of defense against argument
+injection (phase 7 adds more).
+
+**System prompt as policy.** Tool descriptions say what each tool does; the
+system prompt says how THIS agent combines them (check status before
+troubleshooting, search KB before quoting policy). See
+`agents/support_agent.py`.
+
+**Step trace.** The recorded list of (tool, arguments, observation) per run —
+how you answer "why did the agent do that?" after the fact. Becomes
+OpenTelemetry spans in phase 8.
+
+**RAG-as-a-tool.** The phase-2 retrieval stack wrapped as just another tool
+the agent may choose (`search_knowledge_base`). Modern framing: retrieval is
+a capability, not a mandatory pipeline stage.

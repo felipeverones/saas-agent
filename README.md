@@ -13,7 +13,7 @@ observability.
 | 0 | Architecture, ADRs, scaffold | ✅ |
 | 1 | RAG: ingestion + vector retrieval | ✅ |
 | 2 | Agentic RAG: hybrid search, rerank, self-check, citations | ✅ |
-| 3 | Single agent with tools (ReAct loop) | ⏳ |
+| 3 | Single agent with tools (ReAct loop) | ✅ |
 | 4 | Multi-agent: supervisor + specialists | ⏳ |
 | 5 | MCP servers + client | ⏳ |
 | 6 | Memory: short & long term | ⏳ |
@@ -34,6 +34,9 @@ make search Q="customer wants money back after 3 weeks"
 
 # full grounded answer with citations + self-check (needs ANTHROPIC_API_KEY in .env)
 make ask Q="can we force two factor authentication for the whole workspace?"
+
+# single support agent: watches service status, looks up customers, searches the KB
+make agent Q="dana@acme.io says sync is very slow today, what's going on?"
 ```
 
 Unit tests use fakes (instant, offline); integration tests use real embeddings

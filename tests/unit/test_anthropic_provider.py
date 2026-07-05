@@ -11,7 +11,14 @@ from types import SimpleNamespace
 import pytest
 
 from nimbusdesk.infrastructure.anthropic_llm import AnthropicProvider, MissingApiKeyError
-from nimbusdesk.llm.ports import Message
+from nimbusdesk.llm.ports import (
+    AssistantTurn,
+    Message,
+    ToolCall,
+    ToolResultTurn,
+    ToolSpec,
+    UserTurn,
+)
 
 
 def _fake_response(*blocks, input_tokens=7, output_tokens=3):
@@ -62,3 +69,59 @@ def test_non_text_blocks_are_skipped(mocker):
 
     provider = AnthropicProvider(api_key="sk-test", model="m")
     assert provider.complete(messages=[Message(role="user", content="q")]).text == "answer"
+
+
+def test_tool_use_response_is_parsed_into_tool_calls(mocker):
+    client_cls = mocker.patch("nimbusdesk.infrastructure.anthropic_llm.Anthropic")
+    client = client_cls.return_value
+    response = _fake_response(
+        SimpleNamespace(type="text", text="Let me check."),
+        SimpleNamespace(
+            type="tool_use", id="toolu_1", name="get_status", input={"component": "sync"}
+        ),
+    )
+    response.stop_reason = "tool_use"
+    client.messages.create.return_value = response
+
+    provider = AnthropicProvider(api_key="sk-test", model="m")
+    completion = provider.complete_with_tools(
+        turns=[UserTurn(content="is sync ok?")],
+        tools=[ToolSpec(name="get_status", description="d", input_schema={"type": "object"})],
+    )
+
+    assert completion.stop_reason == "tool_use"
+    assert completion.turn.text == "Let me check."
+    call = completion.turn.tool_calls[0]
+    assert (call.id, call.name, call.arguments) == ("toolu_1", "get_status", {"component": "sync"})
+    assert client.messages.create.call_args.kwargs["tools"][0]["name"] == "get_status"
+
+
+def test_consecutive_tool_results_merge_into_one_user_message(mocker):
+    """Anthropic's API rejects two user messages in a row — results from
+    parallel tool calls must travel as blocks of a single user message."""
+    client_cls = mocker.patch("nimbusdesk.infrastructure.anthropic_llm.Anthropic")
+    client = client_cls.return_value
+    client.messages.create.return_value = _fake_response(
+        SimpleNamespace(type="text", text="both fine")
+    )
+
+    provider = AnthropicProvider(api_key="sk-test", model="m")
+    provider.complete_with_tools(
+        turns=[
+            UserTurn(content="check both"),
+            AssistantTurn(
+                tool_calls=[
+                    ToolCall(id="c1", name="t", arguments={}),
+                    ToolCall(id="c2", name="t", arguments={}),
+                ]
+            ),
+            ToolResultTurn(tool_call_id="c1", content="ok1"),
+            ToolResultTurn(tool_call_id="c2", content="ok2"),
+        ],
+        tools=[],
+    )
+
+    messages = client.messages.create.call_args.kwargs["messages"]
+    assert [m["role"] for m in messages] == ["user", "assistant", "user"]
+    result_blocks = messages[2]["content"]
+    assert [b["tool_use_id"] for b in result_blocks] == ["c1", "c2"]

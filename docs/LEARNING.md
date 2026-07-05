@@ -115,7 +115,41 @@ difference between $0.002 and $0.02 per question at scale.
 verification failure — and every LLM call in an answer is token-accounted via
 a decorator on the provider port, not bookkeeping scattered through the code."
 
-## ⏳ The agent loop — reason → act → observe (Phase 3)
+## The agent loop — reason → act → observe (Phase 3)
+
+**What it is.** An agent = an LLM in a loop with tools. Each iteration the
+model either answers (loop exits) or emits structured tool calls; we validate
+arguments, execute, and feed results back as observations. The model decides
+when it's done — that's the difference between an agent and a pipeline.
+
+**The five design rules in our implementation** (`agents/react.py`):
+1. *Structured tool calling, never text parsing* — tools are declared with
+   JSON Schemas generated from Pydantic models; the model returns calls as
+   data. (2023's "Action: search[...]" regex parsing is obsolete — brittle
+   and injectable.)
+2. *Validate before execute* — every argument dict passes the tool's Pydantic
+   model first; garbage bounces back as a model-readable error.
+3. *Errors are observations* — failed calls return to the model
+   (is_error=true) instead of raising; agents recover from errors, crashed
+   processes don't.
+4. *Iteration budget* — max_iterations turns "agent stuck in a loop" from an
+   infinite incident into a bounded failure with a graceful message.
+5. *Full step trace* — every (tool, args, observation) is recorded;
+   "why did it do that?" is answerable from data.
+
+**Where.** Loop: `agents/react.py`. Tool contract: `agents/tools.py`. The
+support agent's tools + prompt: `agents/local_tools.py`,
+`agents/support_agent.py`. Port extension for tool calling:
+`llm/ports.py::ToolCallingLLM`, adapter in `infrastructure/anthropic_llm.py`.
+
+**Why it matters in production.** Every agent framework (LangGraph included)
+is this loop with orchestration sugar on top. Having built it raw once, you
+can debug any of them — and answer "what does your framework actually do?"
+
+**Talking point.** "My agent treats tool failures as observations and has an
+explicit iteration budget — the two properties that separate a demo agent
+from one you can put in front of customers."
+
 ## ⏳ Multi-agent orchestration — supervisor-worker, handoffs, shared state (Phase 4)
 ## ⏳ MCP — servers, clients, consent model (Phase 5)
 ## ⏳ Memory — short-term vs long-term (Phase 6)

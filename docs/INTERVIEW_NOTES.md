@@ -95,6 +95,33 @@ and fuse RANKS with RRF — scores are on incomparable scales, ranks aren't.
 server-side so latency impact is minimal. BM25 needs no training but is
 vocabulary-exact — typo tolerance would need a third trick (not needed here).
 
+## Q: "How would you debug an agent that got stuck in a loop?"
+
+**S/T.** Looping is THE classic agent failure: a confusing tool result makes
+the model retry the same call forever.
+**A.** Prevention first: my loop has a hard `max_iterations` budget — on
+exhaustion it returns a graceful "escalating to a human" answer flagged
+`hit_iteration_limit=True`, so loops are bounded, visible failures, never
+hung processes. Diagnosis second: every run records a full step trace
+(tool, arguments, observation per iteration), so I can replay exactly what
+the model saw before each repeated decision — the culprit is almost always an
+ambiguous observation or a tool description that doesn't match behavior.
+**R.** In tests I script a model that always requests tools and assert the
+loop exits at the budget with the fallback answer (`test_react.py`).
+**Trade-off.** A tight budget truncates legitimately long tasks; the right
+value is task-dependent and belongs in evals (phase 8), not in a constant you
+guess once.
+
+## Q: "How do you keep an agent's tool calls safe?"
+
+**A.** Three layers in phase 3, more in phase 7: (1) the model never executes
+anything — it emits a structured request, my code executes; (2) every tool's
+arguments are validated against a Pydantic schema BEFORE execution, and the
+schema shown to the model is generated from that same model, so docs and
+validation can't drift; (3) failures return as error observations the model
+can read, while internal stack traces stay in MY logs — models don't need
+implementation details, and leaking them helps injection attacks.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping
