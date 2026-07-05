@@ -221,3 +221,25 @@ OpenTelemetry spans in phase 8.
 **RAG-as-a-tool.** The phase-2 retrieval stack wrapped as just another tool
 the agent may choose (`search_knowledge_base`). Modern framing: retrieval is
 a capability, not a mandatory pipeline stage.
+
+**Agent harness.** The production shell AROUND the loop: context management,
+memory persistence, checkpointing/resume, tool sandboxing and permissions,
+sub-agents, tracing, cost control. The loop is the engine; the harness is the
+car. Nothing replaced the loop between 2023 and 2026 — what evolved is this
+packaging. Phases 4-8 of this project build a harness piece by piece
+(orchestration+checkpointing → memory → guardrails → observability).
+
+**Context window.** The finite amount of text the model can see per call. A
+raw loop's only "memory" is the conversation transcript inside it — which
+overflows on long conversations and dies with the process. Every real memory
+technique is about managing what lives OUTSIDE the window and deciding what
+gets injected back in.
+
+**Context engineering.** The 2026 discipline that displaced "prompt
+engineering" as the focus: deciding what enters the finite context window at
+each iteration — which retrieved chunks, which memories, which summarized
+history — rather than wordsmithing one perfect instruction.
+
+**Compaction / summarization.** Replacing older conversation turns with an
+LLM-written summary to keep long sessions inside the context window, trading
+detail for continuity.
