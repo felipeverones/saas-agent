@@ -43,6 +43,8 @@ plus an in-process Qdrant — run only those with `pytest -m integration`.
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagrams + all decisions as ADRs
   (each with the rejected alternative)
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — every concept (BM25, RRF, ports,
+  cross-encoders…) in plain words, with pointers into the code
 - [docs/LEARNING.md](docs/LEARNING.md) — concept-by-concept study notes
 - [docs/INTERVIEW_NOTES.md](docs/INTERVIEW_NOTES.md) — Q&A prep with trade-offs
 

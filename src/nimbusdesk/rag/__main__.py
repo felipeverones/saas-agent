@@ -131,7 +131,27 @@ def main() -> None:
     elif args.command == "search":
         _cmd_search(args.query, args.k)
     else:
-        _cmd_ask(args.question)
+        # Missing/invalid API key is an expected user state, not a bug: exit
+        # with remediation steps instead of a stack trace. (This is the
+        # composition root — the one place outside infrastructure/ allowed to
+        # know the vendor's exception types.)
+        from anthropic import AuthenticationError
+
+        from nimbusdesk.infrastructure.anthropic_llm import MissingApiKeyError
+
+        try:
+            _cmd_ask(args.question)
+        except MissingApiKeyError as error:
+            print(f"error: {error}", file=sys.stderr)
+            raise SystemExit(1) from None
+        except AuthenticationError:
+            print(
+                "error: Anthropic rejected the API key (401). Check the "
+                "ANTHROPIC_API_KEY value in your .env — it may be a placeholder, "
+                "revoked, or truncated.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

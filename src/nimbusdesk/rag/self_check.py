@@ -68,8 +68,12 @@ class FaithfulnessChecker:
                 max_tokens=500,
             )
             claims = self._parse(completion.text)
-        except Exception:
-            logger.warning("faithfulness check errored; failing open", exc_info=True)
+        except Exception as error:
+            logger.warning(
+                "faithfulness check errored (%s: %s); failing open",
+                type(error).__name__,
+                error,
+            )
             return SelfCheckResult(grounded=True, inconclusive=True)
 
         if claims is None:

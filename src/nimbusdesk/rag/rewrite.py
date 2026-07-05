@@ -40,8 +40,15 @@ class QueryRewriter:
                 messages=[Message(role="user", content=question)],
                 max_tokens=100,
             )
-        except Exception:
-            logger.warning("query rewrite failed; falling back to raw question", exc_info=True)
+        except Exception as error:
+            # One-line warning, no traceback: this fallback is EXPECTED under
+            # LLM outages, and a screaming stack trace would train operators
+            # to ignore logs. The generation step will surface real failures.
+            logger.warning(
+                "query rewrite failed (%s: %s); falling back to raw question",
+                type(error).__name__,
+                error,
+            )
             return question
 
         rewritten = completion.text.strip().strip('"')
