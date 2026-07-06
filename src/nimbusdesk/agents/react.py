@@ -24,10 +24,11 @@ THREE PRODUCTION RULES BAKED IN
 """
 
 import logging
+from typing import Sequence
 
 from pydantic import BaseModel, Field
 
-from nimbusdesk.agents.tools import Tool, ToolError
+from nimbusdesk.agents.tools import ToolError, ToolLike
 from nimbusdesk.llm.ports import ToolCall, ToolCallingLLM, ToolResultTurn, Turn, UserTurn
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ class ReactAgent:
     def __init__(
         self,
         llm: ToolCallingLLM,
-        tools: list[Tool],
+        tools: Sequence[ToolLike],
         system_prompt: str,
         max_iterations: int = DEFAULT_MAX_ITERATIONS,
     ) -> None:

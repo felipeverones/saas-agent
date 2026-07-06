@@ -43,6 +43,11 @@ class Settings(BaseSettings):
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
 
+    # MCP servers (phase 5) — each runs as its own process (`make mcp-crm`,
+    # `make mcp-ticketing`); agents reach them over Streamable HTTP.
+    mcp_crm_url: str = "http://localhost:8101/mcp"
+    mcp_ticketing_url: str = "http://localhost:8102/mcp"
+
 
 @lru_cache
 def get_settings() -> Settings:

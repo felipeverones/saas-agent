@@ -17,9 +17,27 @@ WHY EVERY TOOL HAS A PYDANTIC INPUT MODEL
    raised to the user: a good agent reads the error and corrects itself.
 """
 
+from typing import Protocol
+
 from pydantic import BaseModel, ValidationError
 
 from nimbusdesk.llm.ports import ToolSpec
+
+
+class ToolLike(Protocol):
+    """The port the agent loop actually depends on.
+
+    Anything with (name, spec(), run()) is a valid agent capability — the
+    local Tool base below is one adapter; phase 5's RemoteMcpTool (a tool
+    living in another process, reached over MCP) is another. The agent cannot
+    tell them apart, which is precisely the decoupling MCP promises.
+    """
+
+    name: str
+
+    def spec(self) -> ToolSpec: ...
+
+    def run(self, arguments: dict) -> str: ...
 
 
 class ToolError(Exception):

@@ -13,11 +13,13 @@ kill the whole run (requirement: agent failure without derrubar o fluxo).
 """
 
 import logging
+from typing import Sequence
 
 from nimbusdesk.agents.local_tools import LookupCustomerTool, SearchKnowledgeBaseTool
 from nimbusdesk.agents.react import ReactAgent
 from nimbusdesk.agents.state import SupportState
 from nimbusdesk.agents.support_agent import build_support_agent
+from nimbusdesk.agents.tools import ToolLike
 from nimbusdesk.llm.ports import ToolCallingLLM
 from nimbusdesk.rag.ports import Reranker
 from nimbusdesk.rag.retrieval import Retriever
@@ -49,8 +51,14 @@ def _question_with_context(state: SupportState) -> str:
 class TechnicalNode:
     """Wraps the phase-3 support agent (KB search + status + customer lookup)."""
 
-    def __init__(self, llm: ToolCallingLLM, retriever: Retriever, reranker: Reranker) -> None:
-        self._agent = build_support_agent(llm, retriever, reranker)
+    def __init__(
+        self,
+        llm: ToolCallingLLM,
+        retriever: Retriever,
+        reranker: Reranker,
+        account_tools: Sequence[ToolLike] | None = None,
+    ) -> None:
+        self._agent = build_support_agent(llm, retriever, reranker, account_tools=account_tools)
 
     def __call__(self, state: SupportState) -> dict:
         try:
@@ -64,10 +72,17 @@ class TechnicalNode:
 
 
 class BillingNode:
-    def __init__(self, llm: ToolCallingLLM, retriever: Retriever, reranker: Reranker) -> None:
+    def __init__(
+        self,
+        llm: ToolCallingLLM,
+        retriever: Retriever,
+        reranker: Reranker,
+        account_tools: Sequence[ToolLike] | None = None,
+    ) -> None:
+        account = list(account_tools) if account_tools is not None else [LookupCustomerTool()]
         self._agent = ReactAgent(
             llm=llm,
-            tools=[SearchKnowledgeBaseTool(retriever, reranker), LookupCustomerTool()],
+            tools=[SearchKnowledgeBaseTool(retriever, reranker), *account],
             system_prompt=BILLING_SYSTEM_PROMPT,
         )
 

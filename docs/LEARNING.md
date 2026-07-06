@@ -185,7 +185,45 @@ Flows tested end-to-end: `tests/integration/test_support_flows.py`.
 structured output, and routing over it is unit-tested branch by branch. The
 LLMs decide WHAT things are; the system decides WHERE they go."
 
-## ⏳ MCP — servers, clients, consent model (Phase 5)
+## MCP — servers, clients, consent model (Phase 5)
+
+**What it is.** Two standalone MCP servers (CRM, ticketing) built on the
+official SDK, speaking Streamable HTTP; a sync client layer that discovers
+their tools at runtime and adapts each one into the same `ToolLike` port the
+agents already use. The phase-3 local customer lookup and the phase-5 remote
+one are interchangeable — `--mcp` flips between them with zero agent changes.
+
+**The load-bearing ideas.**
+- *Decoupling is real, not rhetorical*: the servers import NOTHING from
+  nimbusdesk (they simulate other teams' systems), and the agent can't tell
+  local from remote tools. `load_remote_tools()` gains whatever the server
+  ships — today's tools and future ones — with no code changes (the M×N
+  payoff).
+- *Consent gate in the client layer*: read-only tools (per server
+  annotations) run freely; everything else requires explicit user approval,
+  and a denial is returned to the MODEL as an observation so it adapts.
+  Missing annotations = sensitive (fail closed).
+- *Schema validation at the protocol boundary*: FastMCP generates schemas
+  from the server's type hints and enforces them before tool code runs —
+  malformed/hostile arguments bounce at the door.
+- *Transport currency*: Streamable HTTP (2025-06-18 spec revision); the SSE
+  transport you'll still see in old tutorials was deprecated in 2025.
+
+**Where.** Servers: `mcp_servers/crm/`, `mcp_servers/ticketing/`. Client +
+consent: `mcp_clients/client.py`, `mcp_clients/tools.py`. Port they satisfy:
+`agents/tools.py::ToolLike`. Full-protocol tests over memory streams:
+`tests/integration/test_mcp.py`.
+
+**Why it matters in production.** Tool integrations are where AI platforms
+ossify: every hardwired integration is future migration debt. MCP turns tools
+into a marketplace — and its security surface (consent, annotations, schema
+validation, treating tool RESULTS as untrusted input) is now standard
+interview material.
+
+**Talking point.** "My agents discover their CRM tools over MCP at runtime;
+the consent gate lives in the client layer so no agent can forget it, and
+unannotated tools are treated as sensitive — fail closed on unknown metadata."
+
 ## ⏳ Memory — short-term vs long-term (Phase 6)
 ## ⏳ Guardrails — I/O validation, HITL, prompt-injection defense (Phase 7)
 ## ⏳ Observability & evaluation — traces, golden datasets, cost (Phase 8)

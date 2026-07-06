@@ -55,9 +55,12 @@ def build_support_graph(
     retriever: Retriever,
     reranker: Reranker,
     checkpointer: Any | None = None,
+    account_tools: Any | None = None,
 ) -> CompiledStateGraph:
     """Composition: model tiers follow the same routing logic as everywhere —
-    triage runs on the fast tier, customer-facing specialists on the strong."""
+    triage runs on the fast tier, customer-facing specialists on the strong.
+    `account_tools`: pass MCP-loaded tools to swap the local customer lookup
+    for the protocol-backed CRM/ticketing (phase 5)."""
     triage_agent = TriageAgent(fast_llm)
 
     def triage_node(state: SupportState) -> dict:
@@ -68,8 +71,10 @@ def build_support_graph(
     builder = StateGraph(SupportState)
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("triage", triage_node)
-    builder.add_node("technical", TechnicalNode(strong_llm, retriever, reranker))
-    builder.add_node("billing", BillingNode(strong_llm, retriever, reranker))
+    builder.add_node(
+        "technical", TechnicalNode(strong_llm, retriever, reranker, account_tools)
+    )
+    builder.add_node("billing", BillingNode(strong_llm, retriever, reranker, account_tools))
     builder.add_node("escalation", escalation_node)
 
     builder.add_edge(START, "supervisor")

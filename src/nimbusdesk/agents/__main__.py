@@ -54,11 +54,36 @@ def _build_llms(settings) -> tuple[UsageTracker, UsageTracker]:
     return fast, strong
 
 
-def _cmd_solo(question: str) -> None:
+def _load_mcp_tools(settings):
+    """Discover tools from both MCP servers (they must be running — see
+    `make mcp-crm` / `make mcp-ticketing`). Sensitive tools go through the
+    CLI consent prompt; read-only ones run freely."""
+    from nimbusdesk.mcp_clients.client import SyncMcpClient
+    from nimbusdesk.mcp_clients.tools import CliConsent, load_remote_tools
+
+    consent = CliConsent()
+    tools = []
+    for url in (settings.mcp_crm_url, settings.mcp_ticketing_url):
+        try:
+            tools.extend(load_remote_tools(SyncMcpClient(url), consent))
+        except Exception as error:
+            print(
+                f"error: could not reach MCP server at {url} "
+                f"({type(error).__name__}). Start it first: make mcp-crm / "
+                "make mcp-ticketing",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from None
+    print(f"[mcp] loaded {len(tools)} remote tools: {', '.join(t.name for t in tools)}")
+    return tools
+
+
+def _cmd_solo(question: str, use_mcp: bool) -> None:
     settings = get_settings()
     _, strong = _build_llms(settings)
     retriever, reranker = _build_retrieval(settings)
-    agent = build_support_agent(strong, retriever, reranker)
+    account_tools = _load_mcp_tools(settings) if use_mcp else None
+    agent = build_support_agent(strong, retriever, reranker, account_tools=account_tools)
 
     result = agent.run(question)
 
@@ -77,7 +102,7 @@ def _cmd_solo(question: str) -> None:
     )
 
 
-def _cmd_team(question: str, email: str | None, thread: str) -> None:
+def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> None:
     from langgraph.checkpoint.sqlite import SqliteSaver
 
     from nimbusdesk.agents.graph import build_support_graph, run_support_graph
@@ -85,11 +110,14 @@ def _cmd_team(question: str, email: str | None, thread: str) -> None:
     settings = get_settings()
     fast, strong = _build_llms(settings)
     retriever, reranker = _build_retrieval(settings)
+    account_tools = _load_mcp_tools(settings) if use_mcp else None
 
     # check_same_thread=False: LangGraph may touch the connection from worker
     # threads; SQLite forbids cross-thread use by default.
     checkpointer = SqliteSaver(sqlite3.connect(CHECKPOINT_DB, check_same_thread=False))
-    graph = build_support_graph(fast, strong, retriever, reranker, checkpointer)
+    graph = build_support_graph(
+        fast, strong, retriever, reranker, checkpointer, account_tools=account_tools
+    )
 
     state = run_support_graph(graph, question, customer_email=email, thread_id=thread)
 
@@ -117,11 +145,13 @@ def main() -> None:
 
     solo = sub.add_parser("solo", help="Single support agent (phase 3)")
     solo.add_argument("question")
+    solo.add_argument("--mcp", action="store_true", help="use MCP servers for CRM/ticketing")
 
     team = sub.add_parser("team", help="Supervisor + specialists graph (phase 4)")
     team.add_argument("question")
     team.add_argument("--email", default=None)
     team.add_argument("--thread", default="dev")
+    team.add_argument("--mcp", action="store_true", help="use MCP servers for CRM/ticketing")
 
     args = parser.parse_args()
 
@@ -129,9 +159,9 @@ def main() -> None:
 
     try:
         if args.command == "solo":
-            _cmd_solo(args.question)
+            _cmd_solo(args.question, args.mcp)
         else:
-            _cmd_team(args.question, args.email, args.thread)
+            _cmd_team(args.question, args.email, args.thread, args.mcp)
     except MissingApiKeyError as error:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1) from None

@@ -301,3 +301,52 @@ budget. See `agents/handoff_demo.py` for the comparison in code.
 full phase-3 ReactAgent with its own inner tool loop: LangGraph governs the
 BETWEEN-agents flow, ReAct the WITHIN-agent flow. Standard shape of
 production multi-agent systems.
+
+## MCP — Model Context Protocol (Phase 5)
+
+**MCP.** An open protocol (Anthropic, Nov 2024; industry standard by 2026)
+that decouples AI apps from their tools: a SERVER exposes capabilities in a
+standard shape, and ANY MCP-capable client can use them. "USB-C for AI."
+Not related to our in-process ports — MCP is a NETWORK protocol between
+processes.
+
+**The M×N problem.** Without a protocol, M apps × N tools = M·N custom
+integrations; with one, each side implements the protocol once: M+N. The same
+economics that gave us HTTP and LSP.
+
+**MCP server / client / host.** Server: the process exposing tools/resources
+(`mcp_servers/crm`, `mcp_servers/ticketing`). Client: the connector inside the
+AI app (`mcp_clients/`). Host: the application the user actually talks to
+(our agents), responsible for consent.
+
+**Tool vs Resource (vs Prompt).** Tool = an ACTION the model may invoke
+(lookup_customer, create_ticket). Resource = readable CONTEXT data addressed
+by URI (`crm://customers`). Prompt = a reusable prompt template the server
+offers. Tools act; resources inform.
+
+**Streamable HTTP.** The current MCP transport (spec rev 2025-06-18): plain
+HTTP requests, stateless-capable on the transport layer. Replaced the
+deprecated SSE transport (common in 2024 tutorials — avoid). stdio remains
+for local child-process servers.
+
+**Tool annotations (readOnlyHint / destructiveHint).** Machine-readable
+safety metadata a server attaches to each tool. Our client uses them to
+decide which calls need consent — and treats MISSING annotations as
+sensitive (fail closed on unknown metadata).
+
+**Consent model.** The MCP spec requires the HOST to obtain user consent
+before invoking tools, especially mutating ones. Ours lives in the CLIENT
+layer (`mcp_clients/tools.py`) so no agent can forget it; a denial returns to
+the model as an observation ("the user declined — don't retry"), so the agent
+adapts instead of silently failing. Phase 7 upgrades the CLI prompt to a
+checkpointed human-in-the-loop interrupt.
+
+**Server-side schema validation.** Tool input schemas are generated from the
+server's own type hints and enforced BEFORE the tool function runs — a
+hostile or confused client can't reach tool code with malformed arguments.
+First line of defense against argument injection over the protocol.
+
+**Sync-over-async bridge.** The official SDK is async; our agent loop is
+sync. The client opens a session per operation (asyncio.run) — simple and
+aligned with stateless Streamable HTTP, at the cost of connection setup per
+call. Phase 9's async FastAPI could hold long-lived sessions instead.

@@ -19,6 +19,7 @@ dependencies = [
     # crossing a boundary (agent state, tool inputs, API payloads) is a validated model.
     "langgraph>=1.2.7",
     "langgraph-checkpoint-sqlite>=3.1.0",
+    "mcp>=1.28.1",
     "pydantic>=2.9",
     # pydantic-settings loads config from env vars / .env with the same validation.
     # WHY: config errors should explode at startup, not mid-conversation with a customer.

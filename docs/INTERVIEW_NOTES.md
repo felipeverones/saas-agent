@@ -159,6 +159,34 @@ is already broken, the last thing you want is another call that can fail).
 The invariant my flow tests pin: every run ends with an answer, even when a
 specialist crashed — a crashed agent degrades the ticket, never kills it.
 
+## Q: "Why MCP instead of just defining tools in code?"
+
+**S/T.** Phase 3 had in-process tools; phase 5 moved the CRM/ticketing ones
+behind MCP servers.
+**A.** Three reasons. Economics: M apps × N tools becomes M+N once both sides
+speak one protocol — my agent gained the ticketing server's tools via runtime
+discovery, zero integration code. Organizational: the CRM server simulates a
+system another team owns; they ship tools on their schedule, my agent picks
+them up. Security: the protocol carries machine-readable safety metadata
+(read-only/destructive annotations) that my client turns into a consent gate.
+**R.** The swap proof: local and MCP customer lookup are interchangeable
+behind the same `ToolLike` port — one flag flips them, agents unchanged.
+**Trade-off.** A protocol hop adds latency and an operational dependency
+(another process to run/monitor). For tools that live and die with your app,
+in-process is fine; MCP pays off at the integration boundary.
+
+## Q: "How do you secure MCP tool calls?"
+
+**A.** Defense in depth, both directions. Inbound to the server: input
+schemas are generated from the server's type hints and enforced BEFORE tool
+code runs — malformed or injected arguments bounce at the protocol boundary.
+On the client/host side: the MCP consent model — read-only tools (per server
+annotations) run freely, mutating ones require explicit user approval, and
+missing annotations are treated as sensitive (fail closed). A denial goes
+back to the model as an observation ("user declined — don't retry") so the
+agent adapts gracefully. And tool RESULTS are treated as untrusted input in
+prompts (indirect injection vector), which phase 7 hardens further.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping
