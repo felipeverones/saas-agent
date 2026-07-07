@@ -11,6 +11,7 @@ __pycache__/
 .env
 
 # Local data / runtime artifacts
+evals/report.json
 *.db
 *.sqlite*
 qdrant_storage/

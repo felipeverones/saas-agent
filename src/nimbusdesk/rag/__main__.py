@@ -105,8 +105,16 @@ def _cmd_ask(question: str) -> None:
         print("Sources:")
         for citation in result.citations:
             print(f"  [{citation.marker}] {citation.title} — {citation.section}")
+    from nimbusdesk.observability.cost import estimate_usd
+
     status = "grounded" if result.grounded else "NOT grounded — needs human review"
-    print(f"\n({status} | tokens: {result.input_tokens} in / {result.output_tokens} out)")
+    # Rough split: attribute all tokens to the strong model — an upper-bound
+    # estimate (fast-tier calls are cheaper), which is the safe direction.
+    cost = estimate_usd(settings.nimbus_model_strong, result.input_tokens, result.output_tokens)
+    print(
+        f"\n({status} | tokens: {result.input_tokens} in / {result.output_tokens} out "
+        f"| est. cost: ${cost:.4f})"
+    )
     if result.notes:
         print(f"note: {result.notes}")
 

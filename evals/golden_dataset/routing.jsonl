@@ -1,0 +1,12 @@
+{"question": "I was double charged this month, can I get a refund?", "expected_route": "billing"}
+{"question": "our May invoice is missing from the billing page", "expected_route": "billing"}
+{"question": "how does proration work if I upgrade mid-cycle?", "expected_route": "billing"}
+{"question": "my card keeps getting declined on renewal", "expected_route": "billing"}
+{"question": "the API returns 429 for every request since noon", "expected_route": "technical"}
+{"question": "webhooks stopped being delivered to our endpoint yesterday", "expected_route": "technical"}
+{"question": "sync is stuck at 99% on twenty of our machines", "expected_route": "technical"}
+{"question": "SSO login fails with ND-SSO-401 invalid signature", "expected_route": "technical"}
+{"question": "how do I add a new admin to our workspace?", "expected_route": "technical"}
+{"question": "URGENT: files are disappearing from our shared folders, we may be losing data", "expected_route": "escalation"}
+{"question": "I think someone broke into our workspace and downloaded everything", "expected_route": "escalation"}
+{"question": "asdf qwerty help thing broken maybe?", "expected_route": "escalation"}

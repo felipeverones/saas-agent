@@ -300,4 +300,36 @@ register a request; above the business threshold the graph checkpoints and
 interrupts until a human resumes it — from any process, any time later. And
 every ambiguity around money resolves to 'denied': actions fail closed."
 
-## ⏳ Observability & evaluation — traces, golden datasets, cost (Phase 8)
+## Observability & evaluation — traces, golden datasets, cost (Phase 8)
+
+**What it is.** Three lenses on a system you can't fully predict:
+1. *Traces* (`observability/tracing.py`): every request produces a span tree
+   — graph.<node> → agent.loop → llm.complete / tool.<name> → rag.retrieve /
+   rerank / self_check — exported as standard OTLP to Arize Phoenix
+   (`make up`, http://localhost:6006). The no-op trick: code is always
+   instrumented; TRACING_ENABLED=1 decides whether telemetry flows.
+2. *Cost* (`observability/cost.py`): every CLI run ends with estimated USD
+   from token counts × a per-model price table. Cost-per-resolved-ticket is
+   a product metric, not an afterthought.
+3. *Offline evals* (`evals/run_eval.py` + golden_dataset/): hit@3 over the
+   real retrieval funnel (free, 17 cases), routing accuracy over real
+   triage+policy (12 cases, needs key), faithfulness of full pipeline
+   answers judged by our own checker (8 cases, needs key). Thresholds gate
+   CI via exit code.
+
+**The distinction that matters in interviews: runtime checks vs offline
+evals.** The runtime self-check catches problems per-ANSWER in production;
+the golden dataset catches regressions per-CHANGE in CI. You need both:
+runtime can't tell you the new embedding model dropped recall 10%, and no
+offline suite covers every live question.
+
+**Where.** `observability/` (tracing, TracingLLM decorator, cost),
+instrumentation inline in react/retrieval/pipeline/graph, evals under
+`evals/`. Span-tree shape pinned by `tests/unit/test_observability.py`
+against an in-memory exporter.
+
+**Talking point.** "My instrumentation is vendor-neutral OTLP with GenAI
+semantic conventions — Phoenix today, Datadog tomorrow, zero code changes.
+And my eval suite reuses the production components as their own judges, so
+eval and runtime can't drift apart."
+

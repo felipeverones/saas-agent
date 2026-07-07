@@ -21,6 +21,7 @@ from nimbusdesk.infrastructure.reranker import FastEmbedReranker
 from nimbusdesk.infrastructure.settings import get_settings
 from nimbusdesk.infrastructure.vector_store import QdrantVectorIndex
 from nimbusdesk.llm.tracking import UsageTracker
+from nimbusdesk.observability.cost import format_usage
 from nimbusdesk.rag.retrieval import Retriever
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
@@ -42,16 +43,31 @@ def _build_retrieval(settings) -> tuple[Retriever, FastEmbedReranker]:
 
 
 def _build_llms(settings) -> tuple[UsageTracker, UsageTracker]:
+    from nimbusdesk.observability.llm import TracingLLM
+
     api_key = (
         settings.anthropic_api_key.get_secret_value()
         if settings.anthropic_api_key
         else None
     )
-    fast = UsageTracker(AnthropicProvider(api_key=api_key, model=settings.nimbus_model_fast))
+    # Decorator stack on the same port: provider -> tracing spans -> token
+    # accounting. Each layer is oblivious to the others (phase 2's promise).
+    fast = UsageTracker(
+        TracingLLM(AnthropicProvider(api_key=api_key, model=settings.nimbus_model_fast))
+    )
     strong = UsageTracker(
-        AnthropicProvider(api_key=api_key, model=settings.nimbus_model_strong)
+        TracingLLM(AnthropicProvider(api_key=api_key, model=settings.nimbus_model_strong))
     )
     return fast, strong
+
+
+def _maybe_enable_tracing(settings) -> None:
+    if settings.tracing_enabled:
+        from nimbusdesk.observability.tracing import setup_tracing
+
+        setup_tracing(settings.otel_exporter_otlp_endpoint)
+        print(f"[tracing] exporting spans to {settings.otel_exporter_otlp_endpoint} "
+              "(view: http://localhost:6006)")
 
 
 def _load_mcp_tools(settings):
@@ -80,6 +96,7 @@ def _load_mcp_tools(settings):
 
 def _cmd_solo(question: str, use_mcp: bool) -> None:
     settings = get_settings()
+    _maybe_enable_tracing(settings)
     _, strong = _build_llms(settings)
     retriever, reranker = _build_retrieval(settings)
     account_tools = _load_mcp_tools(settings) if use_mcp else None
@@ -96,10 +113,10 @@ def _cmd_solo(question: str, use_mcp: bool) -> None:
         print("-" * 60)
     print(f"\n{result.answer}\n")
     limit = " | HIT ITERATION LIMIT" if result.hit_iteration_limit else ""
-    print(
-        f"({result.iterations} iteration(s), {len(result.steps)} tool call(s), "
-        f"tokens: {strong.input_tokens} in / {strong.output_tokens} out{limit})"
+    usage = format_usage(
+        [(settings.nimbus_model_strong, strong.input_tokens, strong.output_tokens)]
     )
+    print(f"({result.iterations} iteration(s), {len(result.steps)} tool call(s), {usage}{limit})")
 
 
 def _build_memory(settings, fast_llm):
@@ -166,6 +183,7 @@ def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> N
     from nimbusdesk.agents.graph import run_support_graph
 
     settings = get_settings()
+    _maybe_enable_tracing(settings)
     graph, fast, strong = _build_team_graph(settings, use_mcp)
 
     state = run_support_graph(
@@ -184,11 +202,13 @@ def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> N
     if state.failures:
         print(f"failures recorded: {state.failures}")
     print(f"\n{state.final_answer}\n")
-    print(
-        f"(thread={thread} | supervisor visits: {state.supervisor_visits} | tokens: "
-        f"{fast.input_tokens + strong.input_tokens} in / "
-        f"{fast.output_tokens + strong.output_tokens} out)"
+    usage = format_usage(
+        [
+            (settings.nimbus_model_fast, fast.input_tokens, fast.output_tokens),
+            (settings.nimbus_model_strong, strong.input_tokens, strong.output_tokens),
+        ]
     )
+    print(f"(thread={thread} | supervisor visits: {state.supervisor_visits} | {usage})")
 
 
 def _cmd_chat(email: str | None, thread: str, use_mcp: bool) -> None:
@@ -197,6 +217,7 @@ def _cmd_chat(email: str | None, thread: str, use_mcp: bool) -> None:
     from nimbusdesk.agents.graph import run_support_graph
 
     settings = get_settings()
+    _maybe_enable_tracing(settings)
     graph, fast, strong = _build_team_graph(settings, use_mcp)
 
     print(f"NimbusDesk support chat — thread '{thread}'"
@@ -215,9 +236,13 @@ def _cmd_chat(email: str | None, thread: str, use_mcp: bool) -> None:
         )
         tag = state.resolved_by or "?"
         print(f"\nnimbus[{tag}]> {state.final_answer}\n")
-    total_in = fast.input_tokens + strong.input_tokens
-    total_out = fast.output_tokens + strong.output_tokens
-    print(f"\n(session tokens: {total_in} in / {total_out} out)")
+    usage = format_usage(
+        [
+            (settings.nimbus_model_fast, fast.input_tokens, fast.output_tokens),
+            (settings.nimbus_model_strong, strong.input_tokens, strong.output_tokens),
+        ]
+    )
+    print(f"\n(session {usage})")
 
 
 def main() -> None:

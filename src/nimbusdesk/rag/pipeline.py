@@ -18,6 +18,7 @@ from typing import Sequence
 
 from nimbusdesk.domain.knowledge import GroundedAnswer, RetrievedChunk
 from nimbusdesk.llm.tracking import UsageTracker
+from nimbusdesk.observability.tracing import span
 from nimbusdesk.rag.answering import AnswerGenerator
 from nimbusdesk.rag.ports import Reranker
 from nimbusdesk.rag.retrieval import Retriever
@@ -52,13 +53,24 @@ class GroundedRagPipeline:
         self._top_k = top_k
 
     def ask(self, question: str) -> GroundedAnswer:
+        with span("rag.ask", question=question[:200]) as ask_span:
+            answer = self._ask(question)
+            ask_span.set_attribute("rag.grounded", answer.grounded)
+            ask_span.set_attribute("rag.citations", len(answer.citations))
+            return answer
+
+    def _ask(self, question: str) -> GroundedAnswer:
         tokens_before = self._usage_snapshot()
 
-        search_query = self._rewriter.rewrite(question)
+        with span("rag.rewrite"):
+            search_query = self._rewriter.rewrite(question)
         chunks = self._retrieve(search_query)
-        draft = self._generator.generate(question, chunks)
+        with span("rag.generate"):
+            draft = self._generator.generate(question, chunks)
 
-        check = self._checker.check(draft.answer, chunks)
+        with span("rag.self_check") as check_span:
+            check = self._checker.check(draft.answer, chunks)
+            check_span.set_attribute("rag.check_grounded", check.grounded)
         rounds = 0
         while not check.grounded and rounds < MAX_CORRECTION_ROUNDS:
             rounds += 1
@@ -97,4 +109,5 @@ class GroundedRagPipeline:
         # (precision). Retrieval mistakes here are unrecoverable downstream —
         # the generator can only cite what this step surfaces.
         candidates = self._retriever.search(query, k=self._candidates)
-        return self._reranker.rerank(query, candidates, top_n=self._top_k)
+        with span("rag.rerank", candidates=len(candidates), top_n=self._top_k):
+            return self._reranker.rerank(query, candidates, top_n=self._top_k)

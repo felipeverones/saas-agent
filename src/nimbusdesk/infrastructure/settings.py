@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
+    # Opt-in tracing: when true, spans export to the endpoint above (Arize
+    # Phoenix in docker-compose). Off = no-op spans, zero overhead, no litter.
+    tracing_enabled: bool = False
 
     # MCP servers (phase 5) — each runs as its own process (`make mcp-crm`,
     # `make mcp-ticketing`); agents reach them over Streamable HTTP.

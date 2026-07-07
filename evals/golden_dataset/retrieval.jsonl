@@ -1,0 +1,17 @@
+{"question": "How long do I have to request a refund on an annual subscription?", "expected_doc": "billing-and-refunds"}
+{"question": "customer wants their money back after three weeks", "expected_doc": "billing-and-refunds"}
+{"question": "what happens if my credit card payment fails?", "expected_doc": "billing-and-refunds"}
+{"question": "The API keeps returning 429 errors, what should my client do?", "expected_doc": "api-rate-limits"}
+{"question": "how many requests per minute does the Pro plan allow?", "expected_doc": "api-rate-limits"}
+{"question": "error ND-WH-TLS", "expected_doc": "webhooks"}
+{"question": "webhook signature mismatch after rotating the secret", "expected_doc": "webhooks"}
+{"question": "how many times are failed webhook deliveries retried?", "expected_doc": "webhooks"}
+{"question": "SAML login fails with an invalid signature after certificate rotation", "expected_doc": "sso-saml"}
+{"question": "what does ND-SSO-403 user not assigned mean?", "expected_doc": "sso-saml"}
+{"question": "sync has been stuck at 99 percent on Windows for hours", "expected_doc": "sync-troubleshooting"}
+{"question": "why do I keep getting conflicted copy files?", "expected_doc": "sync-troubleshooting"}
+{"question": "how long until deleted files are purged from the trash forever?", "expected_doc": "data-export-retention"}
+{"question": "can I export all of our workspace data as a zip?", "expected_doc": "data-export-retention"}
+{"question": "what service credits do we get if uptime drops below the SLA?", "expected_doc": "incidents-and-sla"}
+{"question": "can admins force two factor authentication for the whole workspace?", "expected_doc": "security-overview"}
+{"question": "how do I invite my team and what roles exist?", "expected_doc": "getting-started"}

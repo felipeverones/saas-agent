@@ -18,7 +18,7 @@ observability.
 | 5 | MCP servers + client | ✅ |
 | 6 | Memory: short & long term | ✅ |
 | 7 | Guardrails + human-in-the-loop | ✅ |
-| 8 | Observability + evaluation suite | ⏳ |
+| 8 | Observability + evaluation suite | ✅ |
 | 9 | Packaging: Docker, API + CLI | ⏳ |
 | 10 | Portfolio polish | ⏳ |
 
@@ -50,6 +50,12 @@ uv run python -m nimbusdesk.agents team "what plan is dana@acme.io on?" --mcp
 make chat EMAIL=dana@acme.io THREAD=monday
 # ... close it, come back "tomorrow" on a NEW thread: the system remembers Dana
 make chat EMAIL=dana@acme.io THREAD=tuesday
+
+# observability: set TRACING_ENABLED=true in .env, run anything, then browse
+# the span trees at http://localhost:6006 (Arize Phoenix, started by `make up`)
+
+# evaluation: retrieval suite is free; routing/faithfulness run when a key exists
+make eval
 ```
 
 Unit tests use fakes (instant, offline); integration tests use real embeddings

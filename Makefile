@@ -46,5 +46,5 @@ mcp-ticketing:    ## Run the ticketing MCP server (http://localhost:8102/mcp)
 run:              ## Start the API + interactive CLI (available in phase 9)
 	@echo "Available in phase 9 (packaging & interface)"
 
-eval:             ## Run the golden-dataset evaluation suite (available in phase 8)
-	@echo "Available in phase 8 (observability & evaluation)"
+eval:             ## Golden-dataset evals (retrieval is free; routing/faithfulness need API key)
+	uv run python evals/run_eval.py

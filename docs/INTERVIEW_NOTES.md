@@ -245,6 +245,34 @@ graph instance, resume on a freshly built one sharing only the checkpointer.
 threshold is a business dial (auto-approve limit vs risk), not an
 engineering constant.
 
+## Q: "How would you know if a change made your RAG/agents worse?"
+
+**S/T.** LLM systems fail silently: nothing crashes, quality just drops.
+**A.** Two complementary nets. Offline: a version-controlled golden dataset
+(retrieval hit@3, routing accuracy, faithfulness rate) runs on every change
+with thresholds gating CI — swapping the embedding model or rewording the
+triage prompt shows up as a score delta before deploy. Runtime: OTel traces
+per request (every node, tool call, LLM call with token usage) exported to
+Phoenix, plus a per-answer faithfulness check whose failures ship flagged.
+**R.** My retrieval suite runs free (local embeddings + in-process Qdrant),
+so it's viable on every PR; LLM-dependent suites run when a key is present.
+**Trade-off.** Golden sets rot as the product evolves — they need the same
+care as any test suite; and LLM-as-judge metrics have variance, so I treat
+thresholds as tripwires, not precision instruments.
+
+## Q: "Walk me through debugging a wrong answer in production."
+
+**A.** Open the trace, not the logs. One request = one span tree:
+guard_input → recall → supervisor → triage → specialist's agent.loop →
+each tool call with arguments and error flags → rag.retrieve with the doc
+ids it surfaced → rerank → generate → self_check verdict. The wrong answer
+is almost always attributable to one visible step: retrieval surfaced the
+wrong docs (fix chunking/query), the reranker buried the right one, a tool
+errored and the model improvised, or generation ignored the context (the
+self-check verdict tells you). Token counts per span also expose the cost
+shape of the failure. Logs interleave concurrent requests and hide
+causality; the span tree IS the causality.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping

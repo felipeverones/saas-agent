@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from nimbusdesk.agents.tools import ToolError, ToolLike
 from nimbusdesk.guardrails.injection import sanitize_observation
 from nimbusdesk.llm.ports import ToolCall, ToolCallingLLM, ToolResultTurn, Turn, UserTurn
+from nimbusdesk.observability.tracing import span
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,14 @@ class ReactAgent:
         self._max_iterations = max_iterations
 
     def run(self, question: str) -> AgentResult:
+        with span("agent.loop", max_iterations=self._max_iterations) as loop_span:
+            result = self._run(question)
+            loop_span.set_attribute("agent.iterations", result.iterations)
+            loop_span.set_attribute("agent.tool_calls", len(result.steps))
+            loop_span.set_attribute("agent.hit_iteration_limit", result.hit_iteration_limit)
+            return result
+
+    def _run(self, question: str) -> AgentResult:
         turns: list[Turn] = [UserTurn(content=question)]
         steps: list[AgentStep] = []
         specs = [tool.spec() for tool in self._tools.values()]
@@ -119,6 +128,12 @@ class ReactAgent:
         )
 
     def _execute(self, call: ToolCall) -> tuple[str, bool]:
+        with span(f"tool.{call.name}", tool_args=call.arguments) as tool_span:
+            observation, is_error = self._execute_inner(call)
+            tool_span.set_attribute("tool.is_error", is_error)
+            return observation, is_error
+
+    def _execute_inner(self, call: ToolCall) -> tuple[str, bool]:
         tool = self._tools.get(call.name)
         if tool is None:
             # Hallucinated tool name: tell the model what actually exists.

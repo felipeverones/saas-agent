@@ -14,6 +14,7 @@ means silently failing half your users.
 """
 
 from nimbusdesk.domain.knowledge import RetrievedChunk
+from nimbusdesk.observability.tracing import span
 from nimbusdesk.rag.ports import Embedder, SparseEmbedder, VectorIndex
 
 DEFAULT_TOP_K = 5
@@ -28,8 +29,14 @@ class Retriever:
         self._index = index
 
     def search(self, query: str, k: int = DEFAULT_TOP_K) -> list[RetrievedChunk]:
-        # embed_query, not embed_passages: retrieval models are asymmetric
-        # (see ports.py) — mixing the two silently degrades quality.
-        dense = self._embedder.embed_query(query)
-        sparse = self._sparse_embedder.embed_query(query)
-        return self._index.search(dense, sparse, k)
+        with span("rag.retrieve", query=query[:200], k=k) as current:
+            # embed_query, not embed_passages: retrieval models are asymmetric
+            # (see ports.py) — mixing the two silently degrades quality.
+            dense = self._embedder.embed_query(query)
+            sparse = self._sparse_embedder.embed_query(query)
+            results = self._index.search(dense, sparse, k)
+            current.set_attribute("rag.results", len(results))
+            current.set_attribute(
+                "rag.result_docs", ",".join(r.chunk.doc_id for r in results[:10])
+            )
+            return results

@@ -438,3 +438,43 @@ decision — not the model's draft — becomes the customer-facing answer. See
 action resolves to NO: missing approval callback → denied; malformed resume
 payload → denied; unannotated MCP tool → consent required. Mirror image of
 memory/rewrite failing open — enhancements degrade, actions stop.
+
+## Observability & evaluation (Phase 8)
+
+**Span / trace.** A span = one named, timed step with attributes (model,
+tokens, doc ids, error flags). Spans nest into a trace — the full tree of one
+request. When an answer is wrong, the failing STEP is visible in the tree;
+logs interleave and lie, traces keep causality.
+
+**OTLP / OpenTelemetry.** The vendor-neutral telemetry standard. We emit
+standard OTLP spans, so the viewer (Arize Phoenix locally) is swappable for
+Datadog/Langfuse/etc. with zero instrumentation changes. Instrumentation is
+forever; backends are fashion (ADR-10).
+
+**GenAI semantic conventions.** Standardized attribute names for LLM spans
+(`gen_ai.request.model`, `gen_ai.usage.input_tokens`...) so any OTel-aware
+viewer renders model and token data without custom mapping.
+
+**No-op tracing.** Until a real provider is installed, OTel spans cost ~zero
+and export nowhere — so the code is ALWAYS instrumented and telemetry is
+purely a deployment switch (`TRACING_ENABLED=1`). No `if tracing:` litter.
+
+**Golden dataset.** A small, version-controlled set of question→expected
+pairs ("these must keep working"). Offline evals run it on every change:
+swap the embedding model or reword a prompt, and the scores catch regressions
+BEFORE customers do. Complements (never replaces) the runtime self-check:
+runtime catches problems per-answer, offline catches them per-change.
+
+**hit@k.** Retrieval metric: fraction of golden questions whose expected
+document appears in the top-k results. Ours gates the full funnel
+(hybrid retrieve 20 → rerank 3) at hit@3 ≥ 85%.
+
+**LLM-as-judge (offline).** Using a model to score outputs at eval time —
+our faithfulness suite reuses the same FaithfulnessChecker that runs in
+production, pointed at golden questions. Cheap, scalable, imperfect: judges
+have false negatives, which is why thresholds are gates, not gospel.
+
+**Cost per run.** Every CLI output ends with estimated USD (token counts ×
+a per-model price table in `observability/cost.py`). Unknown models price as
+the strong tier — overestimating is the safe direction for a number that
+exists to catch runaway cost.

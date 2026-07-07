@@ -51,6 +51,7 @@ from nimbusdesk.agents.triage import TriageAgent
 from nimbusdesk.guardrails.input_validation import validate_customer_message
 from nimbusdesk.llm.ports import LLMProvider, ToolCallingLLM
 from nimbusdesk.memory.service import MemoryService
+from nimbusdesk.observability.tracing import span
 from nimbusdesk.rag.ports import Reranker
 from nimbusdesk.rag.retrieval import Retriever
 
@@ -128,18 +129,34 @@ def build_support_graph(
             "turn_index": state.turn_index + 1,
         }
 
+    def traced(name: str, fn) -> Any:
+        """Every graph node gets a span — the top level of the request tree.
+        (human_approval is NOT wrapped: interrupt() suspends mid-node, and a
+        span held open across a days-long pause would be nonsense telemetry.)
+        """
+
+        def wrapper(state: SupportState) -> dict:
+            with span(f"graph.{name}"):
+                return fn(state)
+
+        return wrapper
+
     builder = StateGraph(SupportState)
-    builder.add_node("guard_input", guard_input_node)
-    builder.add_node("recall", recall_node)
-    builder.add_node("supervisor", supervisor_node)
-    builder.add_node("triage", triage_node)
+    builder.add_node("guard_input", traced("guard_input", guard_input_node))
+    builder.add_node("recall", traced("recall", recall_node))
+    builder.add_node("supervisor", traced("supervisor", supervisor_node))
+    builder.add_node("triage", traced("triage", triage_node))
     builder.add_node(
-        "technical", TechnicalNode(strong_llm, retriever, reranker, account_tools)
+        "technical",
+        traced("technical", TechnicalNode(strong_llm, retriever, reranker, account_tools)),
     )
-    builder.add_node("billing", BillingNode(strong_llm, retriever, reranker, account_tools))
-    builder.add_node("escalation", escalation_node)
+    builder.add_node(
+        "billing",
+        traced("billing", BillingNode(strong_llm, retriever, reranker, account_tools)),
+    )
+    builder.add_node("escalation", traced("escalation", escalation_node))
     builder.add_node("human_approval", human_approval_node)
-    builder.add_node("finalize", finalize_node)
+    builder.add_node("finalize", traced("finalize", finalize_node))
 
     builder.add_edge(START, "guard_input")
     builder.add_conditional_edges(

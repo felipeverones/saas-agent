@@ -204,14 +204,21 @@ Format per ADR: **Context → Decision → Rejected alternative → Consequences
 - **Consequences:** vendor-neutral spans; swap Phoenix for Datadog/Langfuse
   without touching app code.
 
-### ADR-11 — Evaluation: DeepEval (pytest-native)
+### ADR-11 — Evaluation: hand-rolled harness (REVISED in phase 8)
 - **Context:** we need a golden dataset (10-20 cases) scoring faithfulness,
   retrieval relevance and routing accuracy, runnable in CI.
-- **Decision:** DeepEval — metrics as pytest assertions.
-- **Rejected:** Ragas — strong RAG metrics library, but the eval-as-test workflow
-  is DeepEval's home turf and matches our CI requirement.
-- **Consequences:** evals run with `make eval` or plain pytest; LLM-as-judge
-  metrics cost tokens, so evals are opt-in, never part of `make test`.
+- **Original decision (phase 0):** DeepEval — metrics as pytest assertions.
+- **Revised decision (phase 8):** a hand-rolled harness (`evals/run_eval.py`)
+  reusing our own components: hit@3 over the real retrieval funnel, routing
+  accuracy over the real triage+policy, faithfulness via our own
+  FaithfulnessChecker as judge.
+- **Why revised:** by phase 8 every metric mapped 1:1 onto components we had
+  already built and tested; DeepEval would have added a dependency and a
+  parallel LLM-configuration system to wrap logic we own. (ADRs are living
+  documents — recording the revision beats pretending the first call was
+  right.)
+- **Consequences:** `make eval` runs free suites always (retrieval) and
+  LLM-dependent ones only when a key exists; thresholds gate CI via exit code.
 
 ### ADR-12 — Packaging: uv
 - **Context:** reproducible env, Python 3.12, fast CI.
