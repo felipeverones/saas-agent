@@ -225,5 +225,43 @@ the consent gate lives in the client layer so no agent can forget it, and
 unannotated tools are treated as sensitive — fail closed on unknown metadata."
 
 ## ⏳ Memory — short-term vs long-term (Phase 6)
-## ⏳ Guardrails — I/O validation, HITL, prompt-injection defense (Phase 7)
+## Memory — short-term vs long-term (Phase 6)
+
+**What it is.** Two memories with different physics:
+- *Short-term* (`history` in `agents/state.py` + LangGraph checkpointing):
+  the exact state of ONE conversation, keyed by thread_id, restored on every
+  invocation. An append REDUCER (`Annotated[list, operator.add]`) makes the
+  history accumulate while per-turn fields get reset (`run_support_graph`).
+- *Long-term* (`memory/`): a lossy, searchable digest across ALL sessions.
+  Structured facts → SQLite (`profile_store.py`, exact lookup, upsert-by-key
+  consolidation); episode summaries → Qdrant (`episodic.py`, similarity
+  lookup, hard per-customer isolation filter). A cheap LLM extracts both
+  after every turn (`writer.py`); the graph's recall node injects them at
+  the start of the next one.
+
+**The interview answer, verbatim.** "Short-term memory is a snapshot —
+exact, per conversation, restored by key. Long-term is a distillation —
+lossy, cross-session, retrieved by relevance. You need both because a
+snapshot can't scale beyond one thread and a distillation can't reconstruct
+a live conversation."
+
+**Design decisions worth remembering.**
+- Distill at write time, not read time: raw transcripts retrieve poorly and
+  make every recall a re-reading job.
+- Exact facts do NOT go in the vector store (fuzzy where you want precision
+  is over-engineering); fuzzy episodes do NOT go in SQL (you don't know the
+  key you'll need).
+- Memory isolation is enforced in the database (Qdrant filter), not in
+  application code someone can forget.
+- Memory fails OPEN everywhere: it's an enhancement, never a dependency.
+
+**Where.** `memory/` (stores, writer, service facade), recall/finalize nodes
+in `agents/graph.py`, flows in `tests/integration/test_memory_flows.py`.
+Demo: `make chat EMAIL=dana@acme.io` across two different THREAD values.
+
+**Talking point.** "My long-term memory is extract→consolidate→retrieve built
+by hand: facts upsert by key so contradictions resolve, episodes upsert by
+(thread, turn) so re-processing is idempotent, and per-customer isolation is
+a database filter, not an application promise."
+
 ## ⏳ Observability & evaluation — traces, golden datasets, cost (Phase 8)

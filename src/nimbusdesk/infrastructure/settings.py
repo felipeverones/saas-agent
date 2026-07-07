@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "nimbus_kb"
+    # Long-term memory stores (phase 6)
+    memory_collection: str = "nimbus_memories"
+    memory_db_path: str = "data/memory.sqlite"
 
     # bge-small-en-v1.5: 384-dim English model, ~65 MB, runs on CPU via ONNX.
     # Small on purpose — free ingestion and fast tests; swapping for a larger

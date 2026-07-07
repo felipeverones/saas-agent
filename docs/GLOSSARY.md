@@ -350,3 +350,49 @@ First line of defense against argument injection over the protocol.
 sync. The client opens a session per operation (asyncio.run) — simple and
 aligned with stateless Streamable HTTP, at the cost of connection setup per
 call. Phase 9's async FastAPI could hold long-lived sessions instead.
+
+## Memory (Phase 6)
+
+**Short-term vs long-term memory — the crisp answer.** Short-term = an EXACT
+SNAPSHOT of one conversation, restored by key (thread_id -> checkpointed
+graph state). Long-term = a LOSSY, SEARCHABLE DISTILLATION of everything
+past, retrieved by relevance. Snapshot vs distillation is the asymmetry that
+makes both necessary: without short-term there's no coherent conversation;
+without long-term the customer repeats themselves every session.
+
+**State reducer.** How LangGraph merges a node's partial update into state:
+default = replace the field; `Annotated[list[X], operator.add]` = APPEND.
+Our `history` uses the append reducer — that's the whole mechanism behind
+multi-turn conversations accumulating across invocations of one thread.
+
+**Turn reset.** With checkpointing, last turn's state is restored before the
+new input merges in — so per-turn fields (final_answer, triage, failures,
+budget) must be explicitly reset each turn or the supervisor would see the
+old answer and end immediately. See `run_support_graph`.
+
+**Profile store (exact half).** Durable key-value facts about a customer
+(plan, OS, preferences) in SQLite. You want ALL facts, precisely, every time
+— a SQL lookup, not a similarity search. Upsert-by-key IS the consolidation:
+"plan=pro" overwrites "plan=free" instead of coexisting with it.
+
+**Episodic memory (fuzzy half).** Past-interaction SUMMARIES in a Qdrant
+collection, retrieved by semantic similarity to the current question — RAG
+machinery pointed at our own history. Dense-only (no BM25 channel): recall
+queries are paraphrases of situations, not error-code lookups.
+
+**Extract → consolidate → retrieve.** The long-term memory pipeline: after
+each turn a cheap LLM distills the exchange into a one-sentence episode +
+durable facts (extract, `memory/writer.py`); facts upsert by key and episodes
+by (thread, turn) id (consolidate); the recall node loads profile + top-k
+relevant episodes into the next turn's context (retrieve). This is the
+mechanism products like Mem0/Zep sell — built by hand here on purpose.
+
+**Memory isolation.** Episodic search carries a HARD per-customer filter
+enforced by the database — Dana's history is unreachable from Sam's
+conversation even when semantically similar. A security property, not a
+relevance heuristic, so it must not live in post-processing someone can
+forget.
+
+**Memory fails open.** Recall/write failures degrade personalization, never
+availability — a support answer must not fail because the diary was down.
+(Contrast with consent, which fails closed: actions vs enhancements.)

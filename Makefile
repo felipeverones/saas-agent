@@ -2,7 +2,7 @@
 # WHY a Makefile in 2026: it's still the lingua franca for "how do I run this repo" —
 # CI, Docker builds and new contributors all read the same entry points.
 
-.PHONY: setup test lint run eval ingest search ask agent team mcp-crm mcp-ticketing up down
+.PHONY: setup test lint run eval ingest search ask agent team chat mcp-crm mcp-ticketing up down
 
 setup:            ## Create venv + install all deps (uv provisions Python 3.12 itself)
 	uv sync
@@ -33,6 +33,9 @@ agent:            ## Single support agent with tools (needs API key in .env)
 
 team:             ## Multi-agent graph: triage + supervisor + specialists
 	uv run python -m nimbusdesk.agents team "$(Q)"
+
+chat:             ## Interactive multi-turn chat with memory, e.g.: make chat EMAIL=dana@acme.io
+	uv run python -m nimbusdesk.agents chat --email "$(EMAIL)" --thread "$(or $(THREAD),chat)"
 
 mcp-crm:          ## Run the CRM MCP server (http://localhost:8101/mcp)
 	uv run python -m nimbusdesk.mcp_servers.crm

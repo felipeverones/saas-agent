@@ -102,12 +102,33 @@ def _cmd_solo(question: str, use_mcp: bool) -> None:
     )
 
 
-def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> None:
+def _build_memory(settings, fast_llm):
+    """Long-term memory wiring: profile facts in SQLite, episodes in Qdrant
+    (same instance as the KB, separate collection), extraction on the fast
+    model tier."""
+    from nimbusdesk.memory.episodic import EpisodicMemoryStore
+    from nimbusdesk.memory.profile_store import SqliteProfileStore
+    from nimbusdesk.memory.service import MemoryService
+    from nimbusdesk.memory.writer import MemoryWriter
+
+    profiles = SqliteProfileStore(
+        sqlite3.connect(settings.memory_db_path, check_same_thread=False)
+    )
+    episodes = EpisodicMemoryStore(
+        client=QdrantClient(url=settings.qdrant_url),
+        embedder=FastEmbedEmbedder(
+            settings.embedding_model_name, settings.embedding_dimension
+        ),
+        collection=settings.memory_collection,
+    )
+    return MemoryService(profiles, episodes, MemoryWriter(fast_llm, profiles, episodes))
+
+
+def _build_team_graph(settings, use_mcp: bool):
     from langgraph.checkpoint.sqlite import SqliteSaver
 
-    from nimbusdesk.agents.graph import build_support_graph, run_support_graph
+    from nimbusdesk.agents.graph import build_support_graph
 
-    settings = get_settings()
     fast, strong = _build_llms(settings)
     retriever, reranker = _build_retrieval(settings)
     account_tools = _load_mcp_tools(settings) if use_mcp else None
@@ -116,8 +137,22 @@ def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> N
     # threads; SQLite forbids cross-thread use by default.
     checkpointer = SqliteSaver(sqlite3.connect(CHECKPOINT_DB, check_same_thread=False))
     graph = build_support_graph(
-        fast, strong, retriever, reranker, checkpointer, account_tools=account_tools
+        fast,
+        strong,
+        retriever,
+        reranker,
+        checkpointer,
+        account_tools=account_tools,
+        memory=_build_memory(settings, fast),
     )
+    return graph, fast, strong
+
+
+def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> None:
+    from nimbusdesk.agents.graph import run_support_graph
+
+    settings = get_settings()
+    graph, fast, strong = _build_team_graph(settings, use_mcp)
 
     state = run_support_graph(graph, question, customer_email=email, thread_id=thread)
 
@@ -139,6 +174,32 @@ def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> N
     )
 
 
+def _cmd_chat(email: str | None, thread: str, use_mcp: bool) -> None:
+    """Interactive multi-turn chat — short-term memory (history within this
+    thread) and long-term memory (recall across sessions) both live here."""
+    from nimbusdesk.agents.graph import run_support_graph
+
+    settings = get_settings()
+    graph, fast, strong = _build_team_graph(settings, use_mcp)
+
+    print(f"NimbusDesk support chat — thread '{thread}'"
+          + (f", customer {email}" if email else ""))
+    print("Type your message ('exit' to quit).\n")
+    while True:
+        try:
+            question = input("you> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not question or question.lower() in ("exit", "quit", "sair"):
+            break
+        state = run_support_graph(graph, question, customer_email=email, thread_id=thread)
+        tag = state.resolved_by or "?"
+        print(f"\nnimbus[{tag}]> {state.final_answer}\n")
+    total_in = fast.input_tokens + strong.input_tokens
+    total_out = fast.output_tokens + strong.output_tokens
+    print(f"\n(session tokens: {total_in} in / {total_out} out)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="nimbusdesk.agents")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -153,6 +214,11 @@ def main() -> None:
     team.add_argument("--thread", default="dev")
     team.add_argument("--mcp", action="store_true", help="use MCP servers for CRM/ticketing")
 
+    chat = sub.add_parser("chat", help="Interactive multi-turn chat with memory (phase 6)")
+    chat.add_argument("--email", default=None)
+    chat.add_argument("--thread", default="chat")
+    chat.add_argument("--mcp", action="store_true", help="use MCP servers for CRM/ticketing")
+
     args = parser.parse_args()
 
     from anthropic import AuthenticationError
@@ -160,8 +226,10 @@ def main() -> None:
     try:
         if args.command == "solo":
             _cmd_solo(args.question, args.mcp)
-        else:
+        elif args.command == "team":
             _cmd_team(args.question, args.email, args.thread, args.mcp)
+        else:
+            _cmd_chat(args.email, args.thread, args.mcp)
     except MissingApiKeyError as error:
         print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1) from None

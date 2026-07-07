@@ -187,6 +187,33 @@ back to the model as an observation ("user declined — don't retry") so the
 agent adapts gracefully. And tool RESULTS are treated as untrusted input in
 prompts (indirect injection vector), which phase 7 hardens further.
 
+## Q: "Explain short-term vs long-term memory in your agent system."
+
+**A.** Different physics. Short-term is an exact SNAPSHOT of one
+conversation: LangGraph checkpoints the typed state after every node, keyed
+by thread_id; an append reducer accumulates the message history while
+per-turn fields reset. Long-term is a lossy, searchable DISTILLATION across
+sessions: after each turn a cheap LLM extracts a one-sentence episode
+(→ Qdrant, similarity search) and durable facts (→ SQLite, exact lookup with
+upsert-by-key consolidation); a recall node injects both at the start of the
+next conversation.
+**R.** Demo: chat with a customer on thread A, close everything, open thread
+B — the system greets them knowing their OS and past issue. Tests pin it:
+history accumulation, cross-session recall, and per-customer isolation.
+**Trade-offs to volunteer.** Distillation loses detail by design (raw
+transcripts retrieve poorly); extraction costs one cheap LLM call per turn;
+and I built it by hand for learning — in a product I'd evaluate Mem0/Zep
+first unless memory is the differentiator.
+
+## Q: "How do you prevent one customer's data leaking into another's session?"
+
+**A.** For memory: the episodic search carries a mandatory per-customer
+filter EXECUTED BY THE DATABASE (Qdrant payload filter) — isolation is a
+storage-layer property, not an application-code promise someone forgets in a
+refactor. Profile facts are keyed by email in SQL. I have a test that stores
+one customer's episode and asserts a semantically identical query from
+another customer returns nothing.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping

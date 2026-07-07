@@ -39,13 +39,27 @@ up. Never promise a refund.
 - Be concise, factual and friendly. Plain text only."""
 
 
+RECENT_HISTORY_TURNS = 6
+
+
 def _question_with_context(state: SupportState) -> str:
-    parts = [state.question]
+    """Assemble what the specialist sees. This is context engineering in
+    miniature: the finite prompt gets (1) long-term memory about the customer,
+    (2) a bounded window of recent short-term history, (3) triage's summary —
+    and NOT the entire raw state."""
+    parts = []
+    if state.memory_context:
+        parts.append(state.memory_context)
+    if state.history:
+        recent = state.history[-RECENT_HISTORY_TURNS:]
+        lines = [f"{turn.role}: {turn.content}" for turn in recent]
+        parts.append("Conversation so far:\n" + "\n".join(lines))
+    parts.append(f"Current customer message: {state.question}")
     if state.customer_email:
         parts.append(f"(customer email on file: {state.customer_email})")
     if state.triage:
         parts.append(f"(triage summary: {state.triage.summary})")
-    return "\n".join(parts)
+    return "\n\n".join(parts)
 
 
 class TechnicalNode:

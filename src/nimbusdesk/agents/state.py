@@ -15,15 +15,41 @@ CHECKPOINTS the result before the next node runs. That per-step persistence is
 what enables pause/resume (phase 7's human approval) and crash recovery.
 """
 
+import operator
+from typing import Annotated, Literal
+
 from pydantic import BaseModel, Field
 
 from nimbusdesk.domain.support import TriageDecision
+
+
+class ChatTurn(BaseModel):
+    """One utterance in the running conversation (short-term memory unit)."""
+
+    role: Literal["customer", "assistant"]
+    content: str
 
 
 class SupportState(BaseModel):
     # -- the request ---------------------------------------------------------
     question: str
     customer_email: str | None = None
+
+    # -- short-term memory (phase 6) ------------------------------------------
+    # Annotated with a REDUCER: nodes return just the NEW turns and LangGraph
+    # APPENDS them (operator.add) instead of replacing — this is how the
+    # conversation accumulates across graph invocations on the same thread,
+    # while per-turn fields below are simply overwritten each turn.
+    history: Annotated[list[ChatTurn], operator.add] = Field(default_factory=list)
+    turn_index: int = 0
+
+    # -- long-term memory context (phase 6) ------------------------------------
+    # Written by the recall node at the start of each turn: profile facts +
+    # relevant past episodes for THIS customer, or None when nothing is known.
+    memory_context: str | None = None
+    # The conversation's thread id, mirrored into state so the finalize node
+    # can key episodic memories. (Nodes can't see the invoke config directly.)
+    thread_hint: str | None = None
 
     # -- written by triage ---------------------------------------------------
     triage: TriageDecision | None = None
