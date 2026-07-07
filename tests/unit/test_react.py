@@ -52,11 +52,13 @@ def test_tool_call_then_answer_feeds_observation_back():
     assert tool.invocations == ["sync"]
     assert result.iterations == 2
     assert result.steps[0].observation == "sync: degraded"
-    # The observation must reach the model on the second call, linked by id.
+    # The observation must reach the model on the second call, linked by id —
+    # wrapped in the phase-7 untrusted-content delimiters.
     second_call_turns = llm.calls[1]["turns"]
     tool_results = [t for t in second_call_turns if isinstance(t, ToolResultTurn)]
     assert tool_results[0].tool_call_id == "c1"
-    assert tool_results[0].content == "sync: degraded"
+    assert "sync: degraded" in tool_results[0].content
+    assert tool_results[0].content.startswith("<tool_output>")
 
 
 def test_invalid_arguments_become_error_observation_not_crash():

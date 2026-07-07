@@ -28,14 +28,17 @@ short-term memory of phase 6).
 """
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 
+from nimbusdesk.agents.hitl import human_approval_node
 from nimbusdesk.agents.specialists import BillingNode, TechnicalNode, escalation_node
 from nimbusdesk.agents.state import ChatTurn, SupportState
 from nimbusdesk.agents.supervisor import (
+    ROUTE_APPROVAL,
     ROUTE_BILLING,
     ROUTE_END,
     ROUTE_ESCALATION,
@@ -45,6 +48,7 @@ from nimbusdesk.agents.supervisor import (
     supervisor_node,
 )
 from nimbusdesk.agents.triage import TriageAgent
+from nimbusdesk.guardrails.input_validation import validate_customer_message
 from nimbusdesk.llm.ports import LLMProvider, ToolCallingLLM
 from nimbusdesk.memory.service import MemoryService
 from nimbusdesk.rag.ports import Reranker
@@ -74,6 +78,24 @@ def build_support_graph(
         # TriageAgent already degrades every failure to the UNKNOWN fallback,
         # so this node never raises and never blocks the flow.
         return {"triage": triage_agent.triage(state.question)}
+
+    def guard_input_node(state: SupportState) -> dict:
+        """The input gate (phase 7). Structural problems reject the turn with
+        a polite canned answer; injection-looking content is flagged into the
+        state (flag, don't block — see guardrails/input_validation.py)."""
+        check = validate_customer_message(state.question)
+        if not check.ok:
+            return {
+                "final_answer": (
+                    "Sorry, we couldn't process that message "
+                    f"({check.rejection_reason}). Please rephrase and try again."
+                ),
+                "resolved_by": "input_guard",
+            }
+        return {"question": check.sanitized, "input_flags": check.flags}
+
+    def route_after_guard(state: SupportState) -> str:
+        return "rejected" if state.final_answer is not None else "accepted"
 
     def recall_node(state: SupportState) -> dict:
         """First node of every turn: load what we know about this customer.
@@ -107,6 +129,7 @@ def build_support_graph(
         }
 
     builder = StateGraph(SupportState)
+    builder.add_node("guard_input", guard_input_node)
     builder.add_node("recall", recall_node)
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("triage", triage_node)
@@ -115,9 +138,13 @@ def build_support_graph(
     )
     builder.add_node("billing", BillingNode(strong_llm, retriever, reranker, account_tools))
     builder.add_node("escalation", escalation_node)
+    builder.add_node("human_approval", human_approval_node)
     builder.add_node("finalize", finalize_node)
 
-    builder.add_edge(START, "recall")
+    builder.add_edge(START, "guard_input")
+    builder.add_conditional_edges(
+        "guard_input", route_after_guard, {"accepted": "recall", "rejected": "finalize"}
+    )
     builder.add_edge("recall", "supervisor")
     builder.add_conditional_edges(
         "supervisor",
@@ -128,14 +155,26 @@ def build_support_graph(
             ROUTE_TECHNICAL: "technical",
             ROUTE_BILLING: "billing",
             ROUTE_ESCALATION: "escalation",
+            ROUTE_APPROVAL: "human_approval",
         },
     )
     # Hub-and-spoke: workers never talk to each other, only to the hub.
-    for worker in ("triage", "technical", "billing", "escalation"):
+    for worker in ("triage", "technical", "billing", "escalation", "human_approval"):
         builder.add_edge(worker, "supervisor")
     builder.add_edge("finalize", END)
 
     return builder.compile(checkpointer=checkpointer)
+
+
+# Given the interrupt payload, returns the human's decision, e.g.
+# {"approved": True} or {"approved": False, "note": "outside refund window"}.
+ApprovalCallback = Callable[[dict], dict]
+
+
+def _deny_no_human(payload: dict) -> dict:
+    # Fail-closed default: with nobody available to approve, irreversible
+    # actions are denied, never silently executed.
+    return {"approved": False, "note": "no human reviewer available"}
 
 
 def run_support_graph(
@@ -143,6 +182,7 @@ def run_support_graph(
     question: str,
     customer_email: str | None = None,
     thread_id: str = "default",
+    approval_callback: ApprovalCallback = _deny_no_human,
 ) -> SupportState:
     """Run ONE conversation turn on a thread.
 
@@ -151,6 +191,12 @@ def run_support_graph(
     budget) must be explicitly reset or the supervisor would see last turn's
     final_answer and end immediately. What we deliberately DON'T reset is the
     short-term memory: `history` (append-only via reducer) and `turn_index`.
+
+    INTERRUPTS: if the run pauses for human approval (large refund), the
+    interrupt payload goes to `approval_callback` and the graph resumes with
+    its decision. In the CLI that's an interactive prompt; in a real product
+    the payload would land in an operator queue and the resume could happen
+    days later from another process — the checkpoint doesn't care.
     """
     turn_input: dict = {
         "question": question,
@@ -163,11 +209,20 @@ def run_support_graph(
         "supervisor_visits": 0,
         "triage": None,
         "memory_context": None,
+        "input_flags": [],
+        "pending_refund": None,
+        "refund_decision": None,
     }
     if customer_email is not None:
         turn_input["customer_email"] = customer_email
 
-    result = graph.invoke(turn_input, config={"configurable": {"thread_id": thread_id}})
+    config = {"configurable": {"thread_id": thread_id}}
+    result = graph.invoke(turn_input, config=config)
+    while "__interrupt__" in result:
+        payload = result["__interrupt__"][0].value
+        decision = approval_callback(payload)
+        result = graph.invoke(Command(resume=decision), config=config)
+
     # LangGraph returns plain dict state values; re-validate at the boundary
     # so callers always hold a typed object.
     return SupportState.model_validate(result)

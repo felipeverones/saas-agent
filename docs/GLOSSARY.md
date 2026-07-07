@@ -396,3 +396,45 @@ forget.
 **Memory fails open.** Recall/write failures degrade personalization, never
 availability — a support answer must not fail because the diary was down.
 (Contrast with consent, which fails closed: actions vs enhancements.)
+
+## Guardrails & human-in-the-loop (Phase 7)
+
+**Flag, don't block.** The two-tier input policy: STRUCTURAL problems (empty,
+oversized, control chars) are rejected outright; SUSPICIOUS content
+(injection-looking phrases) is flagged into state for humans/audit but still
+served — heuristics have false positives, and a customer quoting weird bot
+output must not be locked out. See `guardrails/input_validation.py`.
+
+**Direct vs indirect prompt injection.** Direct: the USER types "ignore your
+instructions". Indirect (the dangerous one): malicious instructions hidden in
+content the system reads on the user's behalf — a poisoned KB document, a
+ticket body, a compromised MCP server's tool result. The model can't tell
+"text to obey" from "text being processed" unless the system draws the line.
+
+**Spotlighting.** The delimit-and-remind technique for untrusted content:
+wrap it in explicit markers (`<tool_output>`, `<document>`), tell the model
+its content is data, and prefix a warning when instruction-like text is
+detected inside. Raises the bar; doesn't make prompts injection-proof —
+structural defenses bound the damage when text-level ones fail.
+
+**Propose vs execute.** The core agent-safety split: the LLM may PROPOSE any
+action; CODE decides what executes. Schema validation, consent gates, the
+refund threshold and the interrupt all live on the code side of that line —
+an injected model can talk, but it cannot cross.
+
+**interrupt() / Command(resume=...).** LangGraph's pause mechanism: a node
+calls `interrupt(payload)`, the graph checkpoints and returns control with
+the payload; later — same or DIFFERENT process — invoking the thread with
+`Command(resume=decision)` re-enters that node with the decision as the
+return value. This is why checkpointing was chosen in phase 0: a call stack
+can't wait days for a human; a checkpoint can wait forever.
+
+**Human-in-the-loop (HITL).** Irreversible actions above a business threshold
+(refund > $500) hard-stop the graph until a person decides. The human's
+decision — not the model's draft — becomes the customer-facing answer. See
+`agents/hitl.py`.
+
+**Fail closed (for actions).** Every ambiguous case around the irreversible
+action resolves to NO: missing approval callback → denied; malformed resume
+payload → denied; unannotated MCP tool → consent required. Mirror image of
+memory/rewrite failing open — enhancements degrade, actions stop.

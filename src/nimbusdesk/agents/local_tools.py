@@ -17,6 +17,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from nimbusdesk.agents.tools import Tool
+from nimbusdesk.domain.support import RefundRequest
 from nimbusdesk.rag.ports import Reranker
 from nimbusdesk.rag.retrieval import Retriever
 
@@ -119,6 +120,53 @@ class ServiceStatusInput(BaseModel):
     component: Literal["web", "api", "sync", "webhooks", "sso"] = Field(
         description="Which service component to check"
     )
+
+
+class RefundInput(BaseModel):
+    email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    amount_usd: float = Field(gt=0, le=100_000)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class RequestRefundTool(Tool):
+    """The irreversible action of this project — and the HITL demonstration.
+
+    THE PATTERN: the LLM can PROPOSE a refund; it can never ISSUE one above
+    the business limit. Within the limit the tool 'executes' (simulated).
+    Above it, the tool only REGISTERS the request on itself; the billing node
+    lifts it into graph state, and the supervisor routes to a human-approval
+    node that pauses the whole graph with interrupt() until a person decides.
+
+    Note the tool is STATEFUL per run (self.pending) — that's how structured
+    data escapes the inner ReAct loop into the outer graph. The billing node
+    creates a fresh instance every call.
+    """
+
+    name = "request_refund"
+    description = (
+        "Request a refund for a customer. Refunds up to $500 are issued "
+        "immediately. Larger refunds are queued for human approval — tell the "
+        "customer their request was registered and needs a specialist's sign-off."
+    )
+    input_model = RefundInput
+
+    def __init__(self) -> None:
+        self.pending: RefundRequest | None = None
+
+    def execute(self, args: RefundInput) -> str:
+        request = RefundRequest(
+            email=args.email, amount_usd=args.amount_usd, reason=args.reason
+        )
+        if not request.requires_human_approval:
+            return json.dumps(
+                {"status": "issued", "amount_usd": args.amount_usd, "email": args.email}
+            )
+        self.pending = request
+        return (
+            f"refund of ${args.amount_usd:.2f} exceeds the $500 auto-approval "
+            "limit: registered for human approval (the customer will be notified "
+            "of the outcome)"
+        )
 
 
 class GetServiceStatusTool(Tool):

@@ -20,7 +20,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from nimbusdesk.domain.support import TriageDecision
+from nimbusdesk.domain.support import RefundRequest, TriageDecision
 
 
 class ChatTurn(BaseModel):
@@ -61,6 +61,16 @@ class SupportState(BaseModel):
     # -- escalation ----------------------------------------------------------
     escalated: bool = False
     escalation_reason: str | None = None
+
+    # -- guardrails (phase 7) --------------------------------------------------
+    # Injection-looking patterns found in the input: recorded for audit and
+    # weighed by humans, never silently dropped (flag, don't block).
+    input_flags: list[str] = Field(default_factory=list)
+    # A refund above the auto-approval limit, waiting for a human decision.
+    # While this is set and undecided, the supervisor routes to the
+    # human-approval node, which pauses the graph via interrupt().
+    pending_refund: RefundRequest | None = None
+    refund_decision: Literal["approved", "denied"] | None = None
 
     # -- control & audit (written by the supervisor / failure handling) -------
     # Failures are DATA, not exceptions: a specialist crashing is recorded

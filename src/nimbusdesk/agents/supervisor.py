@@ -36,6 +36,7 @@ ROUTE_TRIAGE = "triage"
 ROUTE_TECHNICAL = "technical"
 ROUTE_BILLING = "billing"
 ROUTE_ESCALATION = "escalation"
+ROUTE_APPROVAL = "human_approval"
 
 
 def supervisor_node(state: SupportState) -> dict:
@@ -45,6 +46,11 @@ def supervisor_node(state: SupportState) -> dict:
 
 
 def route_from_supervisor(state: SupportState) -> str:
+    # Highest priority: an irreversible action awaiting a human. Checked even
+    # before "answer ready" — no answer ships while money hangs undecided.
+    if state.pending_refund is not None and state.refund_decision is None:
+        return ROUTE_APPROVAL
+
     if state.final_answer is not None:
         return ROUTE_END
 

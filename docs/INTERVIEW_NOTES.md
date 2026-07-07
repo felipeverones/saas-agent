@@ -214,6 +214,37 @@ refactor. Profile facts are keyed by email in SQL. I have a test that stores
 one customer's episode and asserts a semantically identical query from
 another customer returns nothing.
 
+## Q: "How do you defend against prompt injection?"
+
+**A.** By assuming text-level defenses WILL eventually fail and layering
+structural ones that bound the damage. Text level: input flagging (structural
+rejects, suspicious flags — never block on weak heuristics), and spotlighting
+for the indirect vector — every RAG chunk and tool result is delimited,
+size-capped, and warning-prefixed when it contains instruction-like text.
+Structural level, where the real safety lives: the model only ever PROPOSES;
+tool arguments are schema-validated before execution; mutating MCP tools need
+explicit user consent; and irreversible actions above a business threshold
+hard-stop for human approval regardless of what the model says. An injected
+model can talk; it cannot move money.
+**Trade-off.** Layers add latency and code; the alternative — trusting a
+phrase blocklist — is how the publicized incidents happened.
+
+## Q: "How does your human-in-the-loop actually work under the hood?"
+
+**S/T.** Refunds over $500 require a human by business rule.
+**A.** The refund tool never executes above the limit — it registers a
+typed RefundRequest that the billing node lifts into graph state. The
+supervisor routes to an approval node that calls LangGraph's `interrupt()`:
+the state checkpoints, the process can exit, and the payload (action, amount,
+reason) surfaces to whatever operator UI. Resuming with
+`Command(resume={"approved": ...})` re-enters the node with the decision;
+the human's verdict — not the model's draft — becomes the customer answer.
+**R.** My test suite proves the pause survives the process: interrupt on one
+graph instance, resume on a freshly built one sharing only the checkpointer.
+**Trade-off to volunteer.** Every interrupt is support latency; the
+threshold is a business dial (auto-approve limit vs risk), not an
+engineering constant.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping

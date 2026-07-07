@@ -31,6 +31,26 @@ class TicketPriority(StrEnum):
 MIN_ROUTING_CONFIDENCE = 0.5
 
 
+# Business rule (see data/seed/billing-and-refunds.md): agents may approve
+# refunds up to this amount; anything above REQUIRES a senior human's sign-off.
+# Pure domain knowledge — it would be true with an all-human support team too.
+REFUND_AUTO_APPROVAL_LIMIT_USD = 500.0
+
+
+class RefundRequest(BaseModel):
+    """A refund the system wants to issue — the canonical 'irreversible
+    action' of this project. Money leaving the company cannot be un-sent,
+    which is why requests above the limit hard-stop for human approval."""
+
+    email: str
+    amount_usd: float = Field(gt=0)
+    reason: str = Field(min_length=3, max_length=500)
+
+    @property
+    def requires_human_approval(self) -> bool:
+        return self.amount_usd > REFUND_AUTO_APPROVAL_LIMIT_USD
+
+
 class TriageDecision(BaseModel):
     """The structured verdict of ticket triage.
 

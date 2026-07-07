@@ -17,7 +17,7 @@ observability.
 | 4 | Multi-agent: supervisor + specialists | ✅ |
 | 5 | MCP servers + client | ✅ |
 | 6 | Memory: short & long term | ✅ |
-| 7 | Guardrails + human-in-the-loop | ⏳ |
+| 7 | Guardrails + human-in-the-loop | ✅ |
 | 8 | Observability + evaluation suite | ⏳ |
 | 9 | Packaging: Docker, API + CLI | ⏳ |
 | 10 | Portfolio polish | ⏳ |

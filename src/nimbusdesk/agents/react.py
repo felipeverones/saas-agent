@@ -29,6 +29,7 @@ from typing import Sequence
 from pydantic import BaseModel, Field
 
 from nimbusdesk.agents.tools import ToolError, ToolLike
+from nimbusdesk.guardrails.injection import sanitize_observation
 from nimbusdesk.llm.ports import ToolCall, ToolCallingLLM, ToolResultTurn, Turn, UserTurn
 
 logger = logging.getLogger(__name__)
@@ -99,7 +100,13 @@ class ReactAgent:
                 )
                 turns.append(
                     ToolResultTurn(
-                        tool_call_id=call.id, content=observation, is_error=is_error
+                        tool_call_id=call.id,
+                        # Indirect-injection defense (phase 7): tool results
+                        # are UNTRUSTED — delimited, size-capped, and flagged
+                        # if they contain instruction-like text. The raw
+                        # observation stays in the step trace for audit.
+                        content=sanitize_observation(observation),
+                        is_error=is_error,
                     )
                 )
 

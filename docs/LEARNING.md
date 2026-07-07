@@ -224,7 +224,6 @@ interview material.
 the consent gate lives in the client layer so no agent can forget it, and
 unannotated tools are treated as sensitive — fail closed on unknown metadata."
 
-## ⏳ Memory — short-term vs long-term (Phase 6)
 ## Memory — short-term vs long-term (Phase 6)
 
 **What it is.** Two memories with different physics:
@@ -263,5 +262,42 @@ Demo: `make chat EMAIL=dana@acme.io` across two different THREAD values.
 by hand: facts upsert by key so contradictions resolve, episodes upsert by
 (thread, turn) so re-processing is idempotent, and per-customer isolation is
 a database filter, not an application promise."
+
+## Guardrails — I/O validation, HITL, prompt-injection defense (Phase 7)
+
+**What it is.** The deterministic shell around the probabilistic core, in
+four layers:
+1. *Input gate* (`guardrails/input_validation.py` + guard_input node):
+   structural problems rejected; injection-looking phrases flagged into
+   state, never silently blocked (flag-don't-block).
+2. *Untrusted-content defense* (`guardrails/injection.py`): every tool
+   result is delimited, size-capped, and warning-prefixed when it contains
+   instruction-like text (spotlighting) — the INDIRECT injection vector
+   (poisoned docs, hostile tool output) is the one that matters.
+3. *Output validation*: decisions that drive code paths arrive as
+   schema-validated structured output (triage since phase 4); free text is
+   for humans only.
+4. *Human-in-the-loop* (`agents/hitl.py`): refunds over $500 (a DOMAIN rule,
+   `RefundRequest.requires_human_approval`) pause the graph via
+   `interrupt()`; the checkpoint waits — hours, days, another process — and
+   `Command(resume=...)` continues exactly where it stopped. The human's
+   decision becomes the answer; the model's optimistic draft is discarded.
+
+**The design principle tying it together: propose vs execute.** The LLM may
+propose anything; code decides what runs. And failure directions are chosen
+per kind: quality steps fail OPEN (rewrite, memory), actions fail CLOSED
+(consent, refunds — no human available means denied, never executed).
+
+**Where.** `guardrails/`, `agents/hitl.py`,
+`agents/local_tools.py::RequestRefundTool`, routing priority in
+`agents/supervisor.py`, interrupt loop in
+`agents/graph.py::run_support_graph`. Flows:
+`tests/integration/test_hitl_flow.py` — including resume-from-a-fresh-
+process, the test that proves the phase-0 architecture bet.
+
+**Talking point.** "My refund flow is propose-vs-execute: the model can only
+register a request; above the business threshold the graph checkpoints and
+interrupts until a human resumes it — from any process, any time later. And
+every ambiguity around money resolves to 'denied': actions fail closed."
 
 ## ⏳ Observability & evaluation — traces, golden datasets, cost (Phase 8)

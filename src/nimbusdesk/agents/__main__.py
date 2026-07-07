@@ -148,13 +148,30 @@ def _build_team_graph(settings, use_mcp: bool):
     return graph, fast, strong
 
 
+def _cli_approval(payload: dict) -> dict:
+    """The human side of the interrupt: render the pending action, ask.
+    In production this payload would land in an operator queue instead."""
+    print("\n=== HUMAN APPROVAL REQUIRED " + "=" * 32)
+    for key, value in payload.items():
+        print(f"  {key}: {value}")
+    print("=" * 60)
+    reply = input("approve this action? [y/N] ").strip().lower()
+    if reply in ("y", "yes"):
+        return {"approved": True}
+    note = input("optional note for the customer: ").strip()
+    return {"approved": False, "note": note}
+
+
 def _cmd_team(question: str, email: str | None, thread: str, use_mcp: bool) -> None:
     from nimbusdesk.agents.graph import run_support_graph
 
     settings = get_settings()
     graph, fast, strong = _build_team_graph(settings, use_mcp)
 
-    state = run_support_graph(graph, question, customer_email=email, thread_id=thread)
+    state = run_support_graph(
+        graph, question, customer_email=email, thread_id=thread,
+        approval_callback=_cli_approval,
+    )
 
     if state.triage:
         print(
@@ -192,7 +209,10 @@ def _cmd_chat(email: str | None, thread: str, use_mcp: bool) -> None:
             break
         if not question or question.lower() in ("exit", "quit", "sair"):
             break
-        state = run_support_graph(graph, question, customer_email=email, thread_id=thread)
+        state = run_support_graph(
+            graph, question, customer_email=email, thread_id=thread,
+            approval_callback=_cli_approval,
+        )
         tag = state.resolved_by or "?"
         print(f"\nnimbus[{tag}]> {state.final_answer}\n")
     total_in = fast.input_tokens + strong.input_tokens
