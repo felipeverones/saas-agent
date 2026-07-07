@@ -1,8 +1,28 @@
-# Local infrastructure. The app itself joins this file in phase 9;
-# until then we run the app from the venv and only infra lives in containers —
-# faster feedback loop while developing (no image rebuild per code change).
+# The full system: `docker compose up` brings up the vector store, the trace
+# viewer and the API with zero manual steps (the API auto-ingests the seed
+# corpus on first boot). For day-to-day development prefer `make up` (infra
+# only) + `make run` (API from the venv) — no image rebuild per code change.
 
 services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Service names, not localhost: containers resolve each other by name
+      # on the compose network.
+      QDRANT_URL: http://qdrant:6333
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://phoenix:4317
+      TRACING_ENABLED: "true"
+      MEMORY_DB_PATH: /state/memory.sqlite
+      CHECKPOINT_DB_PATH: /state/checkpoints.sqlite
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - fastembed_models:/models
+      - api_state:/state
+    depends_on:
+      - qdrant
+      - phoenix
   # Qdrant: our vector store. Chosen over Chroma because it has native hybrid
   # search (dense + sparse vectors fused server-side), which phase 2 depends on.
   qdrant:
@@ -26,3 +46,5 @@ services:
 
 volumes:
   qdrant_data:
+  fastembed_models:
+  api_state:

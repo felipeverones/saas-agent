@@ -273,6 +273,22 @@ self-check verdict tells you). Token counts per span also expose the cost
 shape of the failure. Logs interleave concurrent requests and hide
 causality; the span tree IS the causality.
 
+## Q: "How did you expose a long-running agent behind an HTTP API?"
+
+**A.** Two problems, two mechanisms. Latency: /chat streams SSE — node-by-
+node progress events, then the answer — because users tolerate seconds they
+can watch and abandon seconds they can't. (Node-level rather than token-level
+was a conscious scope cut: token streaming needs a streaming LLM port
+end-to-end.) Long pauses: when a run interrupts for human approval, the
+stream ends with an `approval_required` event and the graph state sits in
+its checkpoint; a separate POST to /approvals/{thread} — different client,
+different day — resumes it. Two stateless HTTP requests connected only by
+the checkpoint, which is exactly why a checkpointed graph was chosen over a
+call stack on day zero.
+**R.** Both contracts are pinned by API tests against a fake-wired runtime;
+the CLI is a zero-logic SSE client of the same endpoints, so demos exercise
+the production surface.
+
 ---
 
 ⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping

@@ -9,65 +9,30 @@ persisted state in data/checkpoints.sqlite (the graph's short-term memory).
 """
 
 import argparse
-import sqlite3
 import sys
 
-from qdrant_client import QdrantClient
-
 from nimbusdesk.agents.support_agent import build_support_agent
-from nimbusdesk.infrastructure.anthropic_llm import AnthropicProvider, MissingApiKeyError
-from nimbusdesk.infrastructure.embeddings import FastEmbedEmbedder, FastEmbedSparseEmbedder
-from nimbusdesk.infrastructure.reranker import FastEmbedReranker
+from nimbusdesk.infrastructure.anthropic_llm import MissingApiKeyError
 from nimbusdesk.infrastructure.settings import get_settings
-from nimbusdesk.infrastructure.vector_store import QdrantVectorIndex
-from nimbusdesk.llm.tracking import UsageTracker
+from nimbusdesk.interface.wiring import (
+    build_llms as _build_llms,
+)
+from nimbusdesk.interface.wiring import (
+    build_retrieval as _build_retrieval,
+)
+from nimbusdesk.interface.wiring import (
+    build_runtime,
+    maybe_enable_tracing,
+)
 from nimbusdesk.observability.cost import format_usage
-from nimbusdesk.rag.retrieval import Retriever
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
 
-CHECKPOINT_DB = "data/checkpoints.sqlite"
-
-
-def _build_retrieval(settings) -> tuple[Retriever, FastEmbedReranker]:
-    retriever = Retriever(
-        FastEmbedEmbedder(settings.embedding_model_name, settings.embedding_dimension),
-        FastEmbedSparseEmbedder(settings.sparse_model_name),
-        QdrantVectorIndex(
-            client=QdrantClient(url=settings.qdrant_url),
-            collection=settings.qdrant_collection,
-            dimension=settings.embedding_dimension,
-        ),
-    )
-    return retriever, FastEmbedReranker(settings.reranker_model_name)
-
-
-def _build_llms(settings) -> tuple[UsageTracker, UsageTracker]:
-    from nimbusdesk.observability.llm import TracingLLM
-
-    api_key = (
-        settings.anthropic_api_key.get_secret_value()
-        if settings.anthropic_api_key
-        else None
-    )
-    # Decorator stack on the same port: provider -> tracing spans -> token
-    # accounting. Each layer is oblivious to the others (phase 2's promise).
-    fast = UsageTracker(
-        TracingLLM(AnthropicProvider(api_key=api_key, model=settings.nimbus_model_fast))
-    )
-    strong = UsageTracker(
-        TracingLLM(AnthropicProvider(api_key=api_key, model=settings.nimbus_model_strong))
-    )
-    return fast, strong
-
 
 def _maybe_enable_tracing(settings) -> None:
+    maybe_enable_tracing(settings)
     if settings.tracing_enabled:
-        from nimbusdesk.observability.tracing import setup_tracing
-
-        setup_tracing(settings.otel_exporter_otlp_endpoint)
-        print(f"[tracing] exporting spans to {settings.otel_exporter_otlp_endpoint} "
-              "(view: http://localhost:6006)")
+        print("[tracing] exporting spans (view: http://localhost:6006)")
 
 
 def _load_mcp_tools(settings):
@@ -119,50 +84,12 @@ def _cmd_solo(question: str, use_mcp: bool) -> None:
     print(f"({result.iterations} iteration(s), {len(result.steps)} tool call(s), {usage}{limit})")
 
 
-def _build_memory(settings, fast_llm):
-    """Long-term memory wiring: profile facts in SQLite, episodes in Qdrant
-    (same instance as the KB, separate collection), extraction on the fast
-    model tier."""
-    from nimbusdesk.memory.episodic import EpisodicMemoryStore
-    from nimbusdesk.memory.profile_store import SqliteProfileStore
-    from nimbusdesk.memory.service import MemoryService
-    from nimbusdesk.memory.writer import MemoryWriter
-
-    profiles = SqliteProfileStore(
-        sqlite3.connect(settings.memory_db_path, check_same_thread=False)
-    )
-    episodes = EpisodicMemoryStore(
-        client=QdrantClient(url=settings.qdrant_url),
-        embedder=FastEmbedEmbedder(
-            settings.embedding_model_name, settings.embedding_dimension
-        ),
-        collection=settings.memory_collection,
-    )
-    return MemoryService(profiles, episodes, MemoryWriter(fast_llm, profiles, episodes))
-
-
 def _build_team_graph(settings, use_mcp: bool):
-    from langgraph.checkpoint.sqlite import SqliteSaver
-
-    from nimbusdesk.agents.graph import build_support_graph
-
-    fast, strong = _build_llms(settings)
-    retriever, reranker = _build_retrieval(settings)
+    """All composition now lives in interface/wiring.py — the same runtime
+    the API serves; this dev CLI is just another consumer of it."""
     account_tools = _load_mcp_tools(settings) if use_mcp else None
-
-    # check_same_thread=False: LangGraph may touch the connection from worker
-    # threads; SQLite forbids cross-thread use by default.
-    checkpointer = SqliteSaver(sqlite3.connect(CHECKPOINT_DB, check_same_thread=False))
-    graph = build_support_graph(
-        fast,
-        strong,
-        retriever,
-        reranker,
-        checkpointer,
-        account_tools=account_tools,
-        memory=_build_memory(settings, fast),
-    )
-    return graph, fast, strong
+    runtime = build_runtime(settings, account_tools=account_tools)
+    return runtime.graph, runtime.fast, runtime.strong
 
 
 def _cli_approval(payload: dict) -> dict:

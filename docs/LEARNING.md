@@ -333,3 +333,29 @@ semantic conventions — Phoenix today, Datadog tomorrow, zero code changes.
 And my eval suite reuses the production components as their own judges, so
 eval and runtime can't drift apart."
 
+## Packaging & interface — API, CLI, Docker (Phase 9)
+
+**What it is.** The production door: FastAPI with `/chat` streaming SSE
+(node-by-node progress → answer, or `approval_required` when a run pauses),
+`/approvals/{thread}` resuming checkpointed runs, `/health` with honest
+degraded states. The `nimbus` CLI is a zero-logic HTTP client of that API —
+demoing the CLI exercises the production surface. One shared composition
+root (`interface/wiring.py`) feeds both the API and the dev CLI, and
+`docker compose up` brings up qdrant + phoenix + api with auto-ingestion on
+first boot.
+
+**Decisions worth remembering.**
+- *HITL over HTTP*: the interrupt payload ends one request; the approval is
+  a different request, maybe days later — only the checkpoint connects them.
+  This is the phase-0 graph bet paying off at the HTTP layer.
+- *Degrade, don't crash-loop*: startup failures make /health explain
+  themselves instead of restart-looping the container.
+- *Lockfile image*: `uv sync --frozen` in Docker = the container runs the
+  exact dependency set the tests ran against; deps layer cached separately
+  from source.
+
+**Where.** `interface/api/app.py`, `interface/cli/app.py`,
+`interface/wiring.py`, `Dockerfile`, `docker-compose.yml`. Contract tests:
+`tests/integration/test_api.py`.
+
+

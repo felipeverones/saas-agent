@@ -19,16 +19,32 @@ observability.
 | 6 | Memory: short & long term | ✅ |
 | 7 | Guardrails + human-in-the-loop | ✅ |
 | 8 | Observability + evaluation suite | ✅ |
-| 9 | Packaging: Docker, API + CLI | ⏳ |
+| 9 | Packaging: Docker, API + CLI | ✅ |
 | 10 | Portfolio polish | ⏳ |
 
-## Quickstart (current state)
+## Run it in 5 minutes
 
 ```bash
-# prerequisites: uv (https://docs.astral.sh/uv/), Docker
+# prerequisites: Docker + an Anthropic API key
+cp .env.example .env          # put your ANTHROPIC_API_KEY in it
+docker compose up --build     # qdrant + phoenix + api (auto-ingests the KB)
+
+# then talk to it (needs uv: https://docs.astral.sh/uv/)
+uv run nimbus chat --email dana@acme.io
+```
+
+You get: triage → supervisor routing → specialist agents with tools and
+hybrid RAG, node-by-node SSE progress, refunds over $500 pausing for YOUR
+approval in the CLI, memory across sessions, and every request traced at
+http://localhost:6006.
+
+## Development quickstart
+
+```bash
 make setup   # venv + deps (uv provisions Python 3.12)
-make up      # Qdrant (localhost:6333) + Phoenix traces (localhost:6006)
-make test    # test suite — no API keys needed, LLM is always mocked
+make up      # infra only: Qdrant (localhost:6333) + Phoenix (localhost:6006)
+make test    # 119 tests — no API keys needed, LLM is always mocked
+make run     # API from the venv (hot iteration; then `make cli` to chat)
 make ingest  # index the fake NimbusDesk knowledge base into Qdrant
 make search Q="customer wants money back after 3 weeks"
 

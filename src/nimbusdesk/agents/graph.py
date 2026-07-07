@@ -194,6 +194,32 @@ def _deny_no_human(payload: dict) -> dict:
     return {"approved": False, "note": "no human reviewer available"}
 
 
+def build_turn_input(
+    question: str, thread_id: str, customer_email: str | None = None
+) -> dict:
+    """The per-turn state reset (see run_support_graph docstring). Shared by
+    the sync runner below and the API's streaming path — one definition of
+    'what starts a turn' or the two would drift."""
+    turn_input: dict = {
+        "question": question,
+        "thread_hint": thread_id,
+        "final_answer": None,
+        "resolved_by": None,
+        "escalated": False,
+        "escalation_reason": None,
+        "failures": [],
+        "supervisor_visits": 0,
+        "triage": None,
+        "memory_context": None,
+        "input_flags": [],
+        "pending_refund": None,
+        "refund_decision": None,
+    }
+    if customer_email is not None:
+        turn_input["customer_email"] = customer_email
+    return turn_input
+
+
 def run_support_graph(
     graph: CompiledStateGraph,
     question: str,
@@ -215,24 +241,7 @@ def run_support_graph(
     the payload would land in an operator queue and the resume could happen
     days later from another process — the checkpoint doesn't care.
     """
-    turn_input: dict = {
-        "question": question,
-        "thread_hint": thread_id,
-        "final_answer": None,
-        "resolved_by": None,
-        "escalated": False,
-        "escalation_reason": None,
-        "failures": [],
-        "supervisor_visits": 0,
-        "triage": None,
-        "memory_context": None,
-        "input_flags": [],
-        "pending_refund": None,
-        "refund_decision": None,
-    }
-    if customer_email is not None:
-        turn_input["customer_email"] = customer_email
-
+    turn_input = build_turn_input(question, thread_id, customer_email)
     config = {"configurable": {"thread_id": thread_id}}
     result = graph.invoke(turn_input, config=config)
     while "__interrupt__" in result:

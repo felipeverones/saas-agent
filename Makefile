@@ -2,7 +2,7 @@
 # WHY a Makefile in 2026: it's still the lingua franca for "how do I run this repo" —
 # CI, Docker builds and new contributors all read the same entry points.
 
-.PHONY: setup test lint run eval ingest search ask agent team chat mcp-crm mcp-ticketing up down
+.PHONY: setup test lint run cli compose eval ingest search ask agent team chat mcp-crm mcp-ticketing up down
 
 setup:            ## Create venv + install all deps (uv provisions Python 3.12 itself)
 	uv sync
@@ -43,8 +43,14 @@ mcp-crm:          ## Run the CRM MCP server (http://localhost:8101/mcp)
 mcp-ticketing:    ## Run the ticketing MCP server (http://localhost:8102/mcp)
 	uv run python -m nimbusdesk.mcp_servers.ticketing
 
-run:              ## Start the API + interactive CLI (available in phase 9)
-	@echo "Available in phase 9 (packaging & interface)"
+run:              ## Start the API from the venv (dev mode; needs `make up` first)
+	uv run python -m nimbusdesk.interface.api
+
+cli:              ## Interactive chat client against the running API
+	uv run nimbus chat --email "$(EMAIL)"
+
+compose:          ## The whole system in containers: qdrant + phoenix + api
+	docker compose up --build
 
 eval:             ## Golden-dataset evals (retrieval is free; routing/faithfulness need API key)
 	uv run python evals/run_eval.py

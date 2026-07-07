@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # Long-term memory stores (phase 6)
     memory_collection: str = "nimbus_memories"
     memory_db_path: str = "data/memory.sqlite"
+    # Short-term memory: LangGraph checkpoints (phase 4/6). In Docker this
+    # points at the /state volume so conversations survive container restarts.
+    checkpoint_db_path: str = "data/checkpoints.sqlite"
 
     # bge-small-en-v1.5: 384-dim English model, ~65 MB, runs on CPU via ONNX.
     # Small on purpose — free ingestion and fast tests; swapping for a larger

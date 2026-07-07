@@ -478,3 +478,29 @@ have false negatives, which is why thresholds are gates, not gospel.
 a per-model price table in `observability/cost.py`). Unknown models price as
 the strong tier — overestimating is the safe direction for a number that
 exists to catch runaway cost.
+
+## Packaging & interface (Phase 9)
+
+**SSE (Server-Sent Events).** One-directional HTTP streaming: the server
+writes `event:`/`data:` lines down a kept-open response. Our /chat streams
+node-by-node progress then the answer — agent runs take seconds, and users
+tolerate latency they can SEE. (Node-level, not token-level: token streaming
+would need a streaming method on the LLM port end-to-end.)
+
+**HITL over HTTP.** When a run interrupts for approval, the /chat stream ends
+with `approval_required` and the state sits checkpointed; a SEPARATE call to
+/approvals/{thread} — different client, different day — resumes it. Two
+stateless HTTP calls connected only by the checkpoint.
+
+**Thin client.** The `nimbus` CLI holds zero business logic: it's an
+SSE-consuming HTTP client of the API, so every demo also exercises the
+production surface. One brain, two doors.
+
+**Degrade, don't crash-loop.** The API starts even when composition fails
+(missing key): /health reports "degraded" with the reason, /chat returns 503.
+A container that comes up and explains itself beats one restarting forever.
+
+**Lockfile builds.** The Docker image installs from `uv.lock` (`--frozen`):
+the container runs EXACTLY the dependency set the tests ran against.
+Dependencies install in their own layer before source copies in, so code
+edits don't re-download the world on rebuild.
