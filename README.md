@@ -1,5 +1,7 @@
 # NimbusDesk 🌩️
 
+[![CI](https://github.com/felipeverones/saas-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/felipeverones/saas-agent/actions/workflows/ci.yml)
+
 A **production-style AI support platform** for a fictional SaaS company —
 built end to end, layer by layer, to master the 2026 agent stack:
 multi-agent orchestration (LangGraph), agentic RAG, **MCP** servers &

@@ -1,0 +1,62 @@
+# CI: lint + full test suite + the free retrieval eval, on every push/PR.
+#
+# WHY THIS PIPELINE COSTS $0 AND NEEDS NO SECRETS
+# The suite was designed for this from phase 0: every LLM call in tests goes
+# through fakes on the provider port (zero tokens), and the retrieval eval
+# runs local ONNX embeddings against an in-process Qdrant. The only network
+# use is downloading the embedding models once — and those are cached below.
+#
+# The eval step is the interesting part: run_eval.py exits non-zero when
+# retrieval hit@3 drops below its threshold, so a change that silently
+# degrades search quality (new chunking, model swap) FAILS the build.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Pin the model cache to a workspace path so actions/cache can persist
+      # it across runs (first run downloads ~110MB, later runs are instant).
+      FASTEMBED_CACHE_PATH: ${{ github.workspace }}/.fastembed_cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies (from the lockfile, like the Docker image)
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check src tests evals
+
+      - name: Cache embedding models
+        uses: actions/cache@v4
+        with:
+          path: .fastembed_cache
+          key: fastembed-models-${{ runner.os }}-v1
+
+      - name: Unit tests (mocked LLM — zero tokens)
+        run: uv run pytest -m "not integration" -q
+
+      - name: Integration tests (real local models + in-process engines)
+        run: uv run pytest -m integration -q
+
+      - name: Retrieval eval (golden dataset — gates search-quality regressions)
+        run: uv run python evals/run_eval.py --suite retrieval
+
+      - name: Publish eval report
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/report.json
