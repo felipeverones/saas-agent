@@ -61,7 +61,7 @@ flowchart LR
     API --> G["LangGraph supervisor graph<br/>guard → recall → triage →<br/>specialists → finalize"]
     G -->|ReAct + tools| RAG["Agentic RAG<br/>hybrid + rerank +<br/>self-check + citations"]
     G -->|MCP client<br/>+ consent gate| MCP["crm & ticketing<br/>MCP servers"]
-    G -->|interrupt()| HITL["human approval<br/>(checkpointed pause)"]
+    G -->|"interrupt()"| HITL["human approval<br/>(checkpointed pause)"]
     RAG --> QD[("Qdrant")]
     G --> MEM["memory: profile (SQLite)<br/>+ episodes (Qdrant)"]
     G -.->|OTLP spans| PHX["Phoenix"]
