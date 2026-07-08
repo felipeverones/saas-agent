@@ -67,24 +67,28 @@ flowchart TB
     APP --> ENT
 ```
 
-### The supervisor graph (heart of phase 4)
+### The support graph (final topology, phases 4-7)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> guardrails_in
-    guardrails_in --> supervisor
-    supervisor --> triage: new ticket
-    triage --> supervisor: TriageDecision
-    supervisor --> technical: technical category
+    [*] --> guard_input
+    guard_input --> recall: accepted (flags recorded)
+    guard_input --> finalize: rejected (polite refusal)
+    recall --> supervisor: memory_context loaded
+    supervisor --> triage: no TriageDecision yet
+    triage --> supervisor: typed decision (or safe UNKNOWN fallback)
+    supervisor --> technical: technical/account category
     supervisor --> billing: billing category
-    supervisor --> escalation: low confidence / sensitive action
-    technical --> supervisor: answer + citations
+    supervisor --> escalation: low confidence / urgent / failure / budget
+    supervisor --> human_approval: pending refund > $500
+    technical --> supervisor
     billing --> supervisor
-    escalation --> human_approval: interrupt()
-    human_approval --> supervisor: approved/rejected
-    supervisor --> guardrails_out: answer ready
-    guardrails_out --> [*]
-    note right of supervisor: max_iterations guard<br/>prevents infinite loops
+    escalation --> supervisor
+    human_approval --> supervisor: interrupt() … Command(resume)
+    supervisor --> finalize: answer ready
+    finalize --> [*]: history appended,<br/>long-term memory written
+    note right of supervisor: policy router (code, not LLM)<br/>+ visit budget vs infinite loops
+    note right of human_approval: graph checkpoints and PAUSES —<br/>resume may come days later,<br/>from another process
 ```
 
 ### The dependency rule

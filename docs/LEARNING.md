@@ -1,8 +1,17 @@
 # LEARNING.md — concept review notes
 
 One section per topic: **what it is → where it lives in this repo → why it matters
-in production.** Filled in at the end of each phase; review this file before
-interviews. (Sections marked ⏳ are placeholders for upcoming phases.)
+in production.** Review this file before interviews.
+
+**Suggested re-study order** (each layer builds on the previous):
+1. Architecture + ADRs (below) — the frame everything hangs on.
+2. `docs/GLOSSARY.md` — skim it once end to end; it defines every term.
+3. RAG part 1 → part 2 — retrieval before generation, naive before agentic.
+4. Agent loop → multi-agent — one loop before many.
+5. MCP → memory → guardrails — the harness organs.
+6. Observability → packaging — how you run it and know it works.
+Then do a full pass of `docs/INTERVIEW_NOTES.md` out loud, and run the demos
+in the README while watching the traces at localhost:6006.
 
 ---
 

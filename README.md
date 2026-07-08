@@ -1,26 +1,11 @@
 # NimbusDesk 🌩️
 
-A **production-style AI support platform** for a fictional SaaS company — built as
-a hands-on learning project covering what the market expects from AI engineers in
-2026: multi-agent orchestration (LangGraph), agentic RAG, **MCP** servers/clients,
-short/long-term memory, guardrails with human-in-the-loop, and OpenTelemetry
-observability.
-
-> 🚧 **Work in progress** — built in phases. Current status below.
-
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Architecture, ADRs, scaffold | ✅ |
-| 1 | RAG: ingestion + vector retrieval | ✅ |
-| 2 | Agentic RAG: hybrid search, rerank, self-check, citations | ✅ |
-| 3 | Single agent with tools (ReAct loop) | ✅ |
-| 4 | Multi-agent: supervisor + specialists | ✅ |
-| 5 | MCP servers + client | ✅ |
-| 6 | Memory: short & long term | ✅ |
-| 7 | Guardrails + human-in-the-loop | ✅ |
-| 8 | Observability + evaluation suite | ✅ |
-| 9 | Packaging: Docker, API + CLI | ✅ |
-| 10 | Portfolio polish | ⏳ |
+A **production-style AI support platform** for a fictional SaaS company —
+built end to end, layer by layer, to master the 2026 agent stack:
+multi-agent orchestration (LangGraph), agentic RAG, **MCP** servers &
+clients, two-tier memory, guardrails with human-in-the-loop, and
+OpenTelemetry observability. Every module opens with a docstring explaining
+the concept it implements; the codebase doubles as course material.
 
 ## Run it in 5 minutes
 
@@ -33,58 +18,112 @@ docker compose up --build     # qdrant + phoenix + api (auto-ingests the KB)
 uv run nimbus chat --email dana@acme.io
 ```
 
-You get: triage → supervisor routing → specialist agents with tools and
-hybrid RAG, node-by-node SSE progress, refunds over $500 pausing for YOUR
-approval in the CLI, memory across sessions, and every request traced at
-http://localhost:6006.
+Traces of every request land at http://localhost:6006 (Arize Phoenix);
+the vector store dashboard is at http://localhost:6333/dashboard.
 
-## Development quickstart
+## What a request looks like
 
-```bash
-make setup   # venv + deps (uv provisions Python 3.12)
-make up      # infra only: Qdrant (localhost:6333) + Phoenix (localhost:6006)
-make test    # 119 tests — no API keys needed, LLM is always mocked
-make run     # API from the venv (hot iteration; then `make cli` to chat)
-make ingest  # index the fake NimbusDesk knowledge base into Qdrant
-make search Q="customer wants money back after 3 weeks"
+One real `/chat` call, streamed as Server-Sent Events (this is actual output —
+node-by-node progress, then the answer):
 
-# full grounded answer with citations + self-check (needs ANTHROPIC_API_KEY in .env)
-make ask Q="can we force two factor authentication for the whole workspace?"
-
-# single support agent: watches service status, looks up customers, searches the KB
-make agent Q="dana@acme.io says sync is very slow today, what's going on?"
-
-# full multi-agent team: triage -> supervisor routing -> specialist (or human escalation)
-make team Q="I was double charged this month, can I get a refund?"
-
-# MCP: run each server in its own terminal, then point the agents at them (--mcp)
-make mcp-crm         # terminal 1
-make mcp-ticketing   # terminal 2
-uv run python -m nimbusdesk.agents team "what plan is dana@acme.io on?" --mcp
-
-# interactive chat with short-term (thread) and long-term (cross-session) memory
-make chat EMAIL=dana@acme.io THREAD=monday
-# ... close it, come back "tomorrow" on a NEW thread: the system remembers Dana
-make chat EMAIL=dana@acme.io THREAD=tuesday
-
-# observability: set TRACING_ENABLED=true in .env, run anything, then browse
-# the span trees at http://localhost:6006 (Arize Phoenix, started by `make up`)
-
-# evaluation: retrieval suite is free; routing/faithfulness run when a key exists
-make eval
+```
+event: node   data: {"node": "guard_input"}     ← input gate (phase 7)
+event: node   data: {"node": "recall"}          ← long-term memory (phase 6)
+event: node   data: {"node": "supervisor"}
+event: node   data: {"node": "triage"}          ← structured decision (phase 4)
+event: node   data: {"node": "supervisor"}
+event: node   data: {"node": "technical"}       ← ReAct specialist + RAG (2,3)
+event: node   data: {"node": "supervisor"}
+event: node   data: {"node": "finalize"}        ← memory written (phase 6)
+event: answer data: {"answer": "...", "resolved_by": "technical",
+                     "session_est_cost_usd": 0.0113, ...}
 ```
 
-Unit tests use fakes (instant, offline); integration tests use real embeddings
-plus an in-process Qdrant — run only those with `pytest -m integration`.
+And when a customer asks for a refund over $500, the stream ends with
+`approval_required` instead: the graph is **paused on its checkpoint** until
+a human POSTs a verdict to `/approvals/{thread}` — minutes or days later,
+from any process. The `nimbus` CLI plays both roles in one terminal.
+
+> 📸 To record a demo GIF: open two terminals side by side
+> (`docker compose up` in one, `uv run nimbus chat` in the other), press
+> `Win+G` (or use [ScreenToGif](https://www.screentogif.com/)) and capture a
+> refund conversation — the approval prompt mid-stream is the money shot.
+> Save it as `docs/demo.gif` and it will render right here:
+> ![demo](docs/demo.gif)
+
+## Architecture in one picture
+
+```mermaid
+flowchart LR
+    CLI["nimbus CLI"] -->|SSE| API["FastAPI<br/>/chat /approvals"]
+    API --> G["LangGraph supervisor graph<br/>guard → recall → triage →<br/>specialists → finalize"]
+    G -->|ReAct + tools| RAG["Agentic RAG<br/>hybrid + rerank +<br/>self-check + citations"]
+    G -->|MCP client<br/>+ consent gate| MCP["crm & ticketing<br/>MCP servers"]
+    G -->|interrupt()| HITL["human approval<br/>(checkpointed pause)"]
+    RAG --> QD[("Qdrant")]
+    G --> MEM["memory: profile (SQLite)<br/>+ episodes (Qdrant)"]
+    G -.->|OTLP spans| PHX["Phoenix"]
+```
+
+Full diagrams, the dependency rule, and **13 ADRs (each with the rejected
+alternative)** live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Built in 10 phases
+
+| Phase | What it added |
+|---|---|
+| 0 | Layered architecture, ADRs, CI-enforced dependency rule |
+| 1 | RAG ingestion: structure-aware chunking, idempotent indexing |
+| 2 | Agentic RAG: hybrid dense+BM25 (RRF), cross-encoder rerank, citations, faithfulness self-check |
+| 3 | The ReAct loop, raw: schema-validated tools, errors-as-observations, iteration budget |
+| 4 | Multi-agent: supervisor (policy router) + specialists, typed checkpointed state, failure containment |
+| 5 | Two MCP servers (official SDK, Streamable HTTP) + client with consent gate |
+| 6 | Memory: multi-turn threads (snapshot) + extract/consolidate/retrieve long-term (distillation) |
+| 7 | Guardrails: input gate, indirect-injection spotlighting, HITL via `interrupt()` |
+| 8 | OTel traces → Phoenix, cost per run, golden-dataset evals (hit@3 100%) |
+| 9 | FastAPI + SSE, thin CLI, lockfile Docker build, one-command compose |
+
+Each phase is one commit with a narrated message — `git log` is the course.
+
+## Development
+
+```bash
+make setup      # venv + deps (uv provisions Python 3.12)
+make up         # infra only: Qdrant + Phoenix
+make test       # 119 tests — the LLM is ALWAYS mocked; zero tokens, no keys
+make run        # API from the venv (hot iteration), then: make cli
+make eval       # golden-dataset evals (retrieval free; others need a key)
+make search Q="error ND-WH-TLS"        # debug hybrid retrieval, no LLM
+make team Q="refund my $$800 charge"   # one graph turn in the terminal
+make mcp-crm / make mcp-ticketing      # MCP servers; add --mcp to agents
+```
+
+Test strategy worth stealing: unit tests run against fakes satisfying the
+same Protocols as real adapters (instant, offline); integration tests use
+real local models + in-process Qdrant/LangGraph/MCP-over-memory-streams —
+still free. `pytest -m "not integration"` skips the model downloads.
+
+## Definition of Done — all boxes checked
+
+- [x] `docker compose up` brings up the whole system, zero manual steps
+- [x] End-to-end flow demonstrable (triage → RAG → cited answer / escalation)
+- [x] Multi-agent with real handoffs across 4+ specialists
+- [x] 2 custom MCP servers + 1 client (with the spec's consent model)
+- [x] Short- and long-term memory proven by tests (incl. cross-session recall)
+- [x] Human-in-the-loop blocking a sensitive action (refund > $500)
+- [x] Full-request traces viewable in Phoenix
+- [x] Eval suite producing a scored report (`evals/report.json`)
+- [x] Unit + integration coverage on every critical module (119 tests)
+- [x] README / ARCHITECTURE / LEARNING / INTERVIEW_NOTES / GLOSSARY complete
+- [x] No real secrets committed; `.env.example` documents every variable
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagrams + all decisions as ADRs
-  (each with the rejected alternative)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — diagrams + 13 ADRs, each
+  recording the rejected alternative (one honestly revised mid-project)
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — every concept (BM25, RRF, ports,
-  cross-encoders…) in plain words, with pointers into the code
-- [docs/LEARNING.md](docs/LEARNING.md) — concept-by-concept study notes
-- [docs/INTERVIEW_NOTES.md](docs/INTERVIEW_NOTES.md) — Q&A prep with trade-offs
-
-Every package in `src/nimbusdesk/` opens with a docstring explaining the concept
-it implements and why it exists — the codebase doubles as course material.
+  cross-encoders, spotlighting…) in plain words, with pointers into the code
+- [docs/LEARNING.md](docs/LEARNING.md) — concept-by-concept study notes with
+  a suggested re-study order
+- [docs/INTERVIEW_NOTES.md](docs/INTERVIEW_NOTES.md) — 15 likely interview
+  questions with guided answers and the trade-offs to volunteer

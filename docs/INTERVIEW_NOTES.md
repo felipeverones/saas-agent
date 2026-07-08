@@ -289,8 +289,34 @@ call stack on day zero.
 the CLI is a zero-logic SSE client of the same endpoints, so demos exercise
 the production surface.
 
+## Q: "Tell me about this project." (the 2-minute pitch)
+
+"NimbusDesk is a production-style AI support platform I built end to end to
+own every layer of the 2026 agent stack instead of gluing frameworks
+together. A LangGraph supervisor routes tickets to specialist agents —
+triage produces schema-validated decisions with confidence, and routing over
+them is deterministic, tested code. The technical specialist uses agentic
+RAG I built from ingestion up: hybrid dense+BM25 retrieval with RRF fusion,
+cross-encoder reranking, mandatory citations, and an independent
+faithfulness self-check with one bounded correction round. CRM and ticketing
+live behind two MCP servers I wrote with the official SDK — the agents
+discover their tools over the protocol at runtime, with a consent gate on
+every mutating call. Memory is two-tier: checkpointed conversation threads
+plus a hand-built extract-consolidate-retrieve long-term store with
+database-enforced per-customer isolation. Refunds over $500 pause the whole
+graph on a checkpoint until a human approves — over HTTP, the pause and the
+approval are two independent requests, possibly days apart. Everything emits
+OpenTelemetry spans into Phoenix, every run reports estimated cost, and a
+golden-dataset eval suite gates regressions in CI. It ships as
+`docker compose up`: three services, auto-ingestion, 119 tests that never
+call a paid API. The part I'm proudest of: every failure direction is a
+decision — quality steps fail open, actions fail closed — and I can point to
+the test that pins each one."
+
 ---
 
-⏳ To be added per phase: hallucination prevention in RAG (2), debugging a looping
+*This file grew one section per phase alongside the code. When a question
+here feels stale, the answer is in the git history — every phase is one
+commit with a narrated message.* hallucination prevention in RAG (2), debugging a looping
 agent (4), MCP security model (5), prompt-injection defenses (7), how evals catch
 regressions (8).
